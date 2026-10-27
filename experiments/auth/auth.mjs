@@ -256,15 +256,13 @@ export async function textRequest(accessToken, model, fetchImpl = fetch) {
     let seenCreated = false;
     let responseId = null;
     let eventCount = 0;
-    const allowed = new Set(['response.created', 'response.in_progress',
-      'response.output_item.added', 'response.output_item.done',
-      'response.content_part.added', 'response.content_part.done',
-      'response.output_text.delta', 'response.output_text.done',
-      'response.reasoning_summary_text.delta', 'response.reasoning_summary_text.done',
-      'response.completed', 'response.failed', 'response.incomplete', 'error']);
+    // Future valid Responses event types may be added by the server. Validate
+    // the response.* namespace and envelope, but do not mistake extra events
+    // for text or terminal success.
     for await (const event of sse(response.body, { strictMissingMime: missingMime })) {
       if (missingMime) {
-        if (++eventCount > 512 || !event || !allowed.has(event.type))
+        if (++eventCount > 512 || !event || typeof event.type !== 'string' ||
+            !(event.type === 'error' || /^response\.[a-z][a-z_.]*$/.test(event.type)))
           throw new Stop('missing_mime_unrecognized_event');
         if (!seenCreated) {
           if (event.type !== 'response.created' ||
@@ -297,7 +295,7 @@ export async function textRequest(accessToken, model, fetchImpl = fetch) {
     // A result without MIME is accepted only after the full, checked SSE sequence.
     // No generated text or raw response body is emitted, only a boolean.
     return { completed: true, expectedText: text.trim() === 'NEYDRA_AUTH_OK',
-      missingMimeStreamValidated: missingMime, ...metadata };
+      ...metadata, ...(missingMime ? { missingMimeStreamValidated: true } : {}) };
   } catch (error) {
     const stop = error instanceof Stop ? error : new Stop('interrupted_stream');
     Object.assign(stop, metadata);
