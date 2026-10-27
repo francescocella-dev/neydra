@@ -8,11 +8,11 @@
 | 2026-10-27 | High-quality public first release; private technical prototypes acceptable | Product requirement |
 | 2026-10-27 | No added spend beyond eligible ChatGPT plan | Hard constraint |
 | 2026-10-27 | GitHub repository francescocella-dev/neydra, public, main | Connection verified in chat |
-| 2026-10-27 | GitHub branch/PR for design and technical blueprint | Proposed, awaiting review |
+| 2026-10-27 | Blueprint on branch docs/project-blueprint-v0.1, PR #1 | Open, awaiting owner review (not merged) |
 | 2026-10-27 | Official SIWC usage in owner's Plus account | UNVERIFIED pending real sign-in/request |
 | 2026-10-27 | Codex Cloud access and automation on owner's account | Needs account-side check / setup |
 | 2026-10-27 | Meshy Free may supply 3D base meshes | Conditional on exportability and license |
-| 2026-10-27 | 2 independent parallel tasks: 3D stage and auth proof | Ready to prepare, not started |
+| 2026-10-27 | Parallel tasks: authorization #2, 3D stage #3; bootstrap #4 | Issues created, Codex Cloud work not launched |
 | 2026-10-27 | MIT for project-authored code | Initial proposed open-source license; 3rd-party assets separate |
 
-**Next status update:** link planning PR and first two issues; record precise workflow instructions. Each proven integration updates this log with the PR/test reference.
+**Next status update:** owner reviews PR #1 and connects the repository to Codex Cloud, then launches scoped tasks from issues #2 and #3 when eligible. Each proven integration updates this log with the PR/test reference.
