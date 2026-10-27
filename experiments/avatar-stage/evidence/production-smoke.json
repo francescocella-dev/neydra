@@ -1,0 +1,12 @@
+{
+  "url": "http://127.0.0.1:4174",
+  "source": "vite preview of npm run build output",
+  "browser": "154.0.8037.57",
+  "checks": [
+    "Holo GLB rendered",
+    "Mini GLB rendered",
+    "speechStarted enters speaking",
+    "Escape cancels to interrupted"
+  ],
+  "errors": []
+}
