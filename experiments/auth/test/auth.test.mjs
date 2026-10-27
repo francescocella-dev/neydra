@@ -136,7 +136,8 @@ test('one streamed text request uses OAuth, store=false, stream=true and minimal
     assert.equal(body.model, 'catalog-model'); assert.equal(body.input[0].role, 'user');
     return eventResponse([{ type: 'response.output_text.delta', delta: 'NEYDRA_AUTH_OK' }, completed]);
   });
-  assert.deepEqual(result, { completed: true, expectedText: true });
+  assert.deepEqual(result, { completed: true, expectedText: true, httpStatus: 200,
+    contentTypeCategory: 'sse', hasBodyStream: true, requestId: null });
   assert.equal(calls, 1);
 });
 

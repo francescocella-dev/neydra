@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
-import { Stop, authorizationUrl, exchange, models, textRequest } from './auth.mjs';
+import { Stop, authorizationUrl, exchange, failureEvidence, models, textRequest } from './auth.mjs';
 import { listen } from './loopback.mjs';
 
 // Only non-secret installation/registration metadata persists, outside the checkout.
@@ -69,9 +69,6 @@ async function run() {
 }
 
 run().catch(error => {
-  console.error(JSON.stringify({ status: 'BLOCKED',
-    reason: error instanceof Stop ? error.code : 'local_or_protocol_error',
-    httpStatus: error instanceof Stop ? error.httpStatus : null,
-    bodyShape: error instanceof Stop ? error.bodyShape ?? null : null }));
+  console.error(JSON.stringify(failureEvidence(error)));
   process.exitCode = 1;
 });

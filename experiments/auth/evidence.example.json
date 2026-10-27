@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "status": "UNVERIFIED",
   "verificationDate": null,
   "nodeVersion": null,
@@ -21,6 +21,9 @@
   "failure": {
     "code": null,
     "httpStatus": null,
-    "bodyShape": null
+    "bodyShape": null,
+    "contentTypeCategory": null,
+    "hasBodyStream": null,
+    "requestId": null
   }
 }

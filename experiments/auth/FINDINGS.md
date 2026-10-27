@@ -1,9 +1,10 @@
 # Issue #2 — risultati del 27 ottobre 2026
 
 **Stato complessivo: `UNVERIFIED`.** Esiste un percorso ufficialmente documentato
-per OSS locale compatibile con il progetto; manca la prova sull'account Plus del
-proprietario. Non è emerso un requisito di spesa aggiuntiva per quel percorso.
-Non sono stati configurati API key, acquistati crediti o inviati prompt a OpenAI.
+per OSS locale compatibile con il progetto. Il proprietario ha segnalato OAuth e
+catalogo riusciti, poi `BLOCKED/expected_event_stream` alla prima richiesta reale.
+Il completamento dell'inferenza e i costi rimangono da verificare. L'agente non ha
+eseguito OAuth o inferenza; il follow-up autorizza solo analisi e test simulati.
 
 ## Piano e perimetro
 
@@ -44,7 +45,7 @@ piano. Il client non accetta credenziali esterne, endpoint alternativi o fallbac
 Se il percorso ufficiale per questo account fosse indisponibile, il risultato
 diventa `BLOCKED`, senza implementare percorsi privati o acquistare accesso.
 
-## Prove eseguite nel cloud
+## Prove iniziali eseguite nel cloud
 
 Ambiente Linux, Node `v24.19.0`, npm `11.9.0`, Codex CLI `0.163.0`.
 
@@ -75,20 +76,69 @@ tentato un login nel cloud. Non sono state aggiunte dipendenze o artefatti ester
 | Percorso OSS ufficiale, endpoint e parametri individuati | Verificato documentalmente |
 | Protezioni OAuth e richiesta testuale minima | Implementate; test sintetici superati |
 | Handshake protocollo Codex reale, locale e senza token | Verificato su Linux/CLI 0.163.0 |
-| Callback HTTP locale e ACL Windows | `UNVERIFIED` |
-| Consenso browser e idoneità Plus di questo utente | `UNVERIFIED`, intervento del proprietario |
-| Risposta completata con autorizzazione reale e modello disponibile | `UNVERIFIED` |
+| Callback HTTP locale e ACL Windows | Suite iniziale Windows 13/13 segnalata dal proprietario, inclusi 2 test socket; ACL non verificate indipendentemente |
+| Consenso browser e catalogo modelli di questo utente | Riusciti secondo il resoconto del proprietario, non ripetuti dall'agente |
+| Risposta completata con autorizzazione reale e modello disponibile | `UNVERIFIED`; tentativo proprietario bloccato al guard SSE |
 | Assenza di consumo crediti/spese aggiuntive | `UNVERIFIED`, controllo account prima/dopo |
 | Turno Codex con token SIWC reale | `UNVERIFIED`, ponte del token non implementato |
 | Integrazione Electron, storage sicuro persistente, refresh | Fuori dal probe; non verificati |
 
-Nessun `PASS` complessivo. Il blocco operativo corrente è l'assenza della prova
-interattiva locale, non un'affermazione di mancato supporto della piattaforma.
+Nessun `PASS` complessivo. Il blocco corrente è la risposta HTTP non accettata dal
+guard SSE nella prova del proprietario, con metadati originali non registrati.
 Ulteriori rischi: cambiamenti della preview, quota condivisa limitata, modelli e
 policy account variabili, algoritmo ID token diverso da RS256 rifiutato, revisione
 OIDC/Electron necessaria prima della distribuzione. Il runbook non può certificare
 la fatturazione tramite risposte mock o booleani emessi dal client.
 
-**Prossimo passo:** sul PC del proprietario eseguire i test socket, poi una sola
-prova reale seguendo `README.md`, mantenendo i controlli costo. Annotare il
-risultato sanitizzato senza dichiarare conclusa l'issue sulla sola base della PR.
+## Follow-up diagnostico della PR #6 — 27 ottobre 2026
+
+Letto il [commento di revisione](https://github.com/francescocella-dev/neydra/pull/6#issuecomment-6450517392).
+Il resoconto del proprietario riporta `gpt-5.6-luna` e il solo errore
+`expected_event_stream`, con `httpStatus:null` e `bodyShape:null`. Prima della
+modifica, `request()` aveva già accettato `response.ok`; dunque lo stato era 2xx,
+ma il numero esatto, il Content-Type e il corpo non sono ricostruibili dal log.
+Il costruttore `Stop` usava il default nullo perché il guard non gli passava alcuna
+informazione sulla risposta. Questo è il difetto diagnostico corretto.
+
+La modifica raccoglie solo stato HTTP, categoria MIME, presenza del ReadableStream
+e un `x-request-id` con formato strettamente filtrato. Nessun header arbitrario,
+corpo completo, dato personale o credenziale entra nell'evidenza. Le risposte
+2xx inattese non vengono lette né convertite in un successo JSON. Anche gli errori
+SSE successivi conservano gli stessi metadati, senza modificare la richiesta.
+
+Fonti ufficiali rilette in questo follow-up:
+
+- [Models and inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference):
+  conferma Responses HTTP con bearer OAuth, `input` array, `store:false`,
+  `stream:true` e controllo dell'evento terminale. Nessuna indicazione che un 2xx
+  non SSE sia un esito positivo atteso di questo flusso.
+- [Errors and recovery](https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery):
+  descrive errori di admission precedenti allo stream, anche con forma JSON
+  `detail`, e stati 401/403/503. Richiede di conservare stato e request ID; non
+  documenta i 2xx non SSE come comportamento normale. Il formato della risposta
+  reale resta ignoto; l'evidenza omette intenzionalmente i contenuti sensibili.
+- [API overview — Debugging requests](https://developers.openai.com/api/reference/overview#debugging-requests):
+  identifica `x-request-id` per il troubleshooting. Il filtro `req_` + 32 cifre
+  esadecimali è una policy prudenziale del client, non un vincolo dichiarato dal
+  servizio; identificativi con altri formati vengono omessi.
+
+Possibili cause, **non accertate**: risposta JSON/HTML o priva di Content-Type,
+risposta senza corpo (per esempio 204), contenuto alterato da un intermediario,
+oppure SSE con maiuscole nel MIME respinto dal vecchio confronto case-sensitive.
+La nuova classificazione distingue questi casi a livello di metadati ma non può
+attribuirli retroattivamente al server, al modello o a un proxy. Non c'è evidenza
+di un errore OAuth, di un rifiuto del modello o di HTTP 520: 520 avrebbe fallito
+il precedente controllo `response.ok`.
+
+Verifiche di questo follow-up: `npm run check` superato; `npm test` con **27 pass,
+2 test socket opt-in saltati**; `git diff --check` superato. I 16 nuovi casi coprono
+2xx JSON inatteso/malformato, HTML/XHTML, header o corpo assenti, falso MIME SSE,
+SSE valido/errato/incompleto, errori tardivi, sanitizzazione ID e serializzazione
+dell'evidenza. Ogni richiesta simulata verifica una sola chiamata, endpoint e
+parametri protetti. Nessun avvio di `run.mjs`, OAuth, probe Codex o inferenza reale.
+
+**Prossimo passo consentito:** revisione del commit e test simulati sul PC.
+Qualsiasi ulteriore prova reale richiede nuova autorizzazione esplicita del
+proprietario, quota inclusa disponibile, saldo crediti acquistati ancora zero,
+ricarica disattivata e controllo di assenza di addebiti. Nessun retry automatico.
+PR in bozza e risultato complessivo `UNVERIFIED`.

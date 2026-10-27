@@ -1,8 +1,14 @@
 # Esperimento P0A: autenticazione ufficiale con piano ChatGPT
 
-**Esito: `UNVERIFIED`.** La documentazione ammette il percorso OSS locale; l'account
-Plus del proprietario, il consenso reale, l'inferenza e l'assenza di addebiti non
-sono stati verificati. [Fonti e risultati](FINDINGS.md). Nessuna modifica al 3D.
+**Esito: `UNVERIFIED`.** Il proprietario ha segnalato consenso reale e catalogo
+modelli riusciti, poi `BLOCKED/expected_event_stream` alla richiesta con
+`gpt-5.6-luna`. Il completamento dell'inferenza e i costi non sono provati.
+[Fonti e risultati](FINDINGS.md). Nessuna modifica al 3D.
+
+**Follow-up corrente: solo analisi e test simulati.** Non eseguire `npm start`,
+`run.mjs`, OAuth o inferenza. Le istruzioni reali sotto sono sospese: una nuova
+prova richiede nuova autorizzazione esplicita del proprietario e ricontrollo dei
+vincoli di costo. Questa modifica non ripete la richiesta fallita.
 
 Questo è un esperimento **Node per il futuro processo main di Electron**: non
 include una finestra Electron, un renderer o un'applicazione pronta da distribuire.
@@ -26,8 +32,8 @@ npm test
 Remove-Item Env:\NEYDRA_TEST_LOOPBACK
 ```
 
-Il primo test esegue 11 casi senza rete e salta 2 test socket. Il secondo deve
-eseguire tutti i 13 casi. I callback sintetici dei test non aprono OpenAI e non
+Il primo test esegue 27 casi senza rete e salta 2 test socket. Il secondo deve
+eseguire tutti i 29 casi. I callback sintetici dei test non aprono OpenAI e non
 rappresentano un consenso OAuth. Se il bind locale è vietato, quei test non sono
 verificati: non aggirare firewall o policy con privilegi amministrativi.
 
@@ -69,7 +75,8 @@ Questo slice JavaScript non ha transpiler, build, asset o dipendenze condivise.
    quota inclusa, saldo crediti zero e ricarica disattivata, anche per la nuova
    connessione. Quindi autorizza una sola richiesta dal prompt fisso non personale
    `Rispondi esattamente: NEYDRA_AUTH_OK`. Non ci sono retry automatici.
-7. Il risultato mostra soltanto booleani e stato. `completed: true` richiede un
+7. Il risultato mostra stato, booleani e metadati sanitizzati descritti sotto.
+   `completed: true` richiede un
    evento terminale di successo; `expectedText: true` conferma la risposta attesa.
    Un HTTP 200, un frammento di testo o il catalogo non bastano. Il programma
    lascia comunque `status: UNVERIFIED`: nessun evento prova la fatturazione.
@@ -85,6 +92,41 @@ quando identità, permesso, completamento, testo atteso e tutti i controlli di c
 sono confermati. Il solo handshake Codex non prova l'inferenza Codex. Se manca
 evidenza resta `UNVERIFIED`; se serve un percorso non supportato, pagamento o la
 quota non è disponibile, indica `BLOCKED` con il codice sanitizzato e fermati.
+
+## Diagnostica sicura della risposta HTTP
+
+La causa del vecchio `httpStatus:null` era locale: il guard `expected_event_stream`
+creava `Stop` senza passargli i metadati della risposta già ricevuta. Inoltre
+accorpava tipo di contenuto e corpo assente in un solo errore. Non dimostrava
+assenza di risposta HTTP né fallimento OAuth. I valori originali non sono
+recuperabili dal vecchio log; non vanno inventati.
+
+La CLI ora emette un insieme fisso di campi, anche per errori durante lo stream:
+
+| Campo | Significato |
+|---|---|
+| `httpStatus` | Stato effettivo della risposta ricevuta, anche 2xx; `null` se non disponibile. |
+| `contentTypeCategory` | Solo `sse`, `json`, `html`, `missing`, `other`; `null` senza metadati HTTP. Mai il Content-Type grezzo o i suoi parametri. |
+| `hasBodyStream` | Presenza di un ReadableStream nel corpo Fetch. `true` non prova che contenga SSE o sia completo; `false` distingue il corpo assente, `null` significa non osservato. |
+| `requestId` | Solo `x-request-id`, se corrisponde interamente a `req_` + 32 cifre esadecimali (36 caratteri, case-insensitive); conservato senza alterazioni. Altrimenti `null`. Nessun recupero da altri header, token o corpo. |
+| `bodyShape` | Campo preesistente per la sola forma degli errori non-2xx. Rimane `null` per 2xx non SSE: quei corpi non vengono letti o interpretati. |
+
+Il filtro del request ID è una scelta prudenziale locale, non una garanzia sul
+formato di ogni identificativo OpenAI. `null` può significare assente oppure
+scartato. Valori troppo lunghi, email, URL, credenziali, ID multipli e caratteri
+di controllo sono esclusi interamente, senza pubblicarne una porzione troncata.
+
+Esempio **esclusivamente simulato**, non ricostruzione della risposta dell'utente:
+
+```json
+{"status":"BLOCKED","reason":"expected_event_stream","httpStatus":200,"bodyShape":null,"contentTypeCategory":"json","hasBodyStream":true,"requestId":null}
+```
+
+Il guard riconosce `text/event-stream` normalizzato, indipendentemente da maiuscole
+e parametri; una semplice sottostringa non basta. JSON, HTML, header mancante o
+corpo assente continuano a bloccare l'inferenza; un SSE valido richiede ancora
+`response.completed`. Nessun retry, lettura del corpo inatteso o fallback.
+Lo schema di `evidence.example.json` è ora versione 2.
 
 ## Dati locali e interruzione
 

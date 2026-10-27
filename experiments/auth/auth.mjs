@@ -17,6 +17,35 @@ export class Stop extends Error {
   }
 }
 
+// Return only bounded metadata. Never consume a body or enumerate arbitrary headers.
+export function responseMetadata(response) {
+  const mediaType = (response.headers.get('content-type') ?? '').split(';', 1)[0].trim().toLowerCase();
+  let contentTypeCategory = 'other';
+  if (!mediaType) contentTypeCategory = 'missing';
+  else if (mediaType === 'text/event-stream') contentTypeCategory = 'sse';
+  else if (mediaType === 'application/json' || /^application\/[a-z0-9!#$&^_.+-]+\+json$/.test(mediaType))
+    contentTypeCategory = 'json';
+  else if (['text/html', 'application/xhtml+xml'].includes(mediaType)) contentTypeCategory = 'html';
+  const requestId = response.headers.get('x-request-id');
+  return {
+    httpStatus: response.status,
+    contentTypeCategory,
+    hasBodyStream: typeof response.body?.getReader === 'function',
+    // Conservative local privacy policy, not a claim about all possible OpenAI ID formats.
+    // Drop unfamiliar, oversized or malformed IDs whole; never truncate a potential secret.
+    requestId: typeof requestId === 'string' && requestId.length === 36 &&
+      /^req_[a-f0-9]{32}$/i.test(requestId) ? requestId : null,
+  };
+}
+
+export function failureEvidence(error) {
+  const stop = error instanceof Stop ? error : null;
+  return { status: 'BLOCKED', reason: stop?.code ?? 'local_or_protocol_error',
+    httpStatus: stop?.httpStatus ?? null, bodyShape: stop?.bodyShape ?? null,
+    contentTypeCategory: stop?.contentTypeCategory ?? null,
+    hasBodyStream: stop?.hasBodyStream ?? null, requestId: stop?.requestId ?? null };
+}
+
 export function transaction(redirectUri, hostId, clientId = null) {
   const redirect = new URL(redirectUri);
   if (redirect.protocol !== 'http:' || redirect.hostname !== '127.0.0.1' ||
@@ -70,6 +99,7 @@ export async function request(url, options = {}, fetchImpl = fetch) {
       ...options, redirect: 'error', signal: AbortSignal.timeout(120_000),
     });
     if (!response.ok) {
+      const metadata = responseMetadata(response);
       let body;
       try { body = await response.json(); } catch { /* Non-JSON error, never print it. */ }
       const known = new Set(['invalid_grant', 'invalid_client',
@@ -80,6 +110,7 @@ export async function request(url, options = {}, fetchImpl = fetch) {
         'chatpass_v2_invalid_authorization_context']);
       const code = typeof body?.error === 'string' ? body.error : body?.error?.code;
       const error = new Stop(known.has(code) ? code : 'http_rejected', response.status);
+      Object.assign(error, metadata);
       error.bodyShape = body?.detail !== undefined ? 'detail' : body?.error !== undefined ? 'error' : 'other';
       throw error;
     }
@@ -179,11 +210,12 @@ export async function textRequest(accessToken, model, fetchImpl = fetch) {
     body: JSON.stringify({ model, input: [{ role: 'user', content: TEST_PROMPT }],
       store: false, stream: true }),
   }, fetchImpl);
-  if (!response.headers.get('content-type')?.includes('text/event-stream') || !response.body)
-    throw new Stop('expected_event_stream');
+  const metadata = responseMetadata(response);
   let completed = false;
   let text = '';
   try {
+    if (metadata.contentTypeCategory !== 'sse' || !metadata.hasBodyStream)
+      throw new Stop('expected_event_stream');
     for await (const event of sse(response.body)) {
       if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') {
         text += event.delta;
@@ -199,11 +231,12 @@ export async function textRequest(accessToken, model, fetchImpl = fetch) {
         completed = true;
       }
     }
+    if (!completed) throw new Stop('stream_without_completion');
+    // Never write arbitrary generated content to stdout/evidence.
+    return { completed: true, expectedText: text.trim() === 'NEYDRA_AUTH_OK', ...metadata };
   } catch (error) {
-    if (error instanceof Stop) throw error;
-    throw new Stop('interrupted_stream');
+    const stop = error instanceof Stop ? error : new Stop('interrupted_stream');
+    Object.assign(stop, metadata);
+    throw stop;
   }
-  if (!completed) throw new Stop('stream_without_completion');
-  // Never write arbitrary generated content to stdout/evidence.
-  return { completed: true, expectedText: text.trim() === 'NEYDRA_AUTH_OK' };
 }
