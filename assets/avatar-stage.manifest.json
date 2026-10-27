@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "scope": "experiments/avatar-stage",
+  "licenseFile": "LICENSE",
+  "assets": [
+    {
+      "id": "holo",
+      "path": "experiments/avatar-stage/public/models/holo-prototype.glb",
+      "author": "NEYDRA contributors (generated in Issue #3 implementation)",
+      "source": "experiments/avatar-stage/scripts/generate-assets.mjs",
+      "origin": "Original procedural engineering geometry; no external model, concept image, texture, likeness or generative model used.",
+      "license": "MIT",
+      "redistribution": "Allowed with repository MIT notice. No third-party asset attribution required.",
+      "format": "glTF 2.0 binary, embedded geometry/materials, node rig and position morphs",
+      "productionReady": false,
+      "status": "ENGINE PROTOTYPE / NOT FINAL CHARACTER"
+    },
+    {
+      "id": "mini",
+      "path": "experiments/avatar-stage/public/models/mini-prototype.glb",
+      "author": "NEYDRA contributors (generated in Issue #3 implementation)",
+      "source": "experiments/avatar-stage/scripts/generate-assets.mjs",
+      "origin": "Original procedural engineering geometry; no external model, concept image, texture, likeness or generative model used.",
+      "license": "MIT",
+      "redistribution": "Allowed with repository MIT notice. No third-party asset attribution required.",
+      "format": "glTF 2.0 binary, embedded geometry/materials, node rig and position morphs",
+      "productionReady": false,
+      "status": "ENGINE PROTOTYPE / NOT FINAL CHARACTER"
+    }
+  ],
+  "otherAssets": "No external textures, HDRIs, fonts, audio or concept artwork bundled. Screenshot evidence is captured from the running prototype.",
+  "importPolicy": "Local imports stay in memory; not uploaded or added to this manifest. Users must verify their rights. Self-contained GLB only, maximum 20 MiB. No external resource URI or required decoder extensions."
+}

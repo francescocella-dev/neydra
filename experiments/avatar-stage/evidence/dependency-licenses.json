@@ -1,0 +1,14 @@
+{
+  "method": "Read license declarations from installed package.json files selected by package-lock.json; no legal certification.",
+  "installedLicenseDeclarations": {
+    "MIT": 183,
+    "Apache-2.0": 20,
+    "BlueOak-1.0.0": 1,
+    "ISC": 12,
+    "BSD-3-Clause": 4,
+    "Python-2.0": 1,
+    "CC-BY-4.0": 1,
+    "BSD-2-Clause": 6
+  },
+  "missing": []
+}
