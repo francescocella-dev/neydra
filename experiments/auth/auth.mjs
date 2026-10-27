@@ -178,27 +178,60 @@ export async function models(accessToken, fetchImpl = fetch) {
     typeof m.slug === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(m.slug)).map(m => m.slug);
 }
 
-export async function* sse(body) {
-  const decoder = new TextDecoder();
+// Strict mode is reserved for HTTP 200 with no advertised MIME; it never issues
+// a second request and never treats arbitrary JSON/HTML as a successful stream.
+export async function* sse(body, { strictMissingMime = false } = {}) {
+  const decoder = new TextDecoder('utf-8', { fatal: strictMissingMime });
   let buffer = '';
+  let cumulativeBytes = 0;
+  let frames = 0;
   for await (const chunk of body) {
+    if (strictMissingMime) {
+      if (!(chunk instanceof Uint8Array)) throw new Stop('unexpected_stream_chunk');
+      cumulativeBytes += chunk.byteLength;
+      if (cumulativeBytes > 262_144) throw new Stop('missing_mime_stream_too_large');
+    }
     buffer += decoder.decode(chunk, { stream: true });
-    if (buffer.length > 2_000_000) throw new Stop('oversized_stream_event');
+    if (buffer.length > (strictMissingMime ? 65_536 : 2_000_000))
+      throw new Stop('oversized_stream_event');
     while (true) {
       const match = /\r?\n\r?\n/.exec(buffer);
       if (!match) break;
       const frame = buffer.slice(0, match.index);
       buffer = buffer.slice(match.index + match[0].length);
-      const data = frame.split(/\r?\n/).filter(l => l.startsWith('data:'))
-        .map(l => l.slice(5).trimStart()).join('\n');
+      if (strictMissingMime && ++frames > 512) throw new Stop('missing_mime_event_limit');
+      const dataLines = [];
+      let declaredEvent = null;
+      for (const line of frame.split(/\r?\n/)) {
+        if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+        else if (strictMissingMime && line.startsWith('event:')) {
+          if (declaredEvent !== null) throw new Stop('missing_mime_duplicate_event');
+          declaredEvent = line.slice(6).trimStart();
+        } else if (strictMissingMime && !(line === '' || line.startsWith(':') || line.startsWith('id:')))
+          throw new Stop('missing_mime_not_sse');
+      }
+      const data = dataLines.join('\n');
+      if (strictMissingMime && !data) {
+        if (declaredEvent !== null) throw new Stop('missing_mime_not_sse');
+        continue;
+      }
       if (data && data !== '[DONE]') {
-        try { yield JSON.parse(data); } catch (e) {
-          if (e instanceof SyntaxError) throw new Stop('invalid_stream_json');
-          throw e;
+        let event;
+        try { event = JSON.parse(data); } catch {
+          throw new Stop('invalid_stream_json');
         }
+        if (strictMissingMime &&
+          (!event || typeof event.type !== 'string' ||
+            (declaredEvent !== null && declaredEvent !== event.type)))
+          throw new Stop('missing_mime_not_sse');
+        yield event;
+      } else if (strictMissingMime && data === '[DONE]' && declaredEvent !== null) {
+        throw new Stop('missing_mime_not_sse');
       }
     }
   }
+  // A final UTF-8 decoder flush detects truncated trailing multibyte sequences.
+  if (strictMissingMime) decoder.decode();
   if (buffer.trim()) throw new Stop('truncated_stream_frame');
 }
 
@@ -214,9 +247,38 @@ export async function textRequest(accessToken, model, fetchImpl = fetch) {
   let completed = false;
   let text = '';
   try {
-    if (metadata.contentTypeCategory !== 'sse' || !metadata.hasBodyStream)
+    // Official OpenAI Node SDK parses requested SSE independently of Content-Type.
+    // We likewise allow a *missing* MIME, never a declared non-SSE MIME, but only
+    // after validating a real response.created -> response.completed sequence.
+    const missingMime = metadata.contentTypeCategory === 'missing' && response.status === 200;
+    if ((!missingMime && metadata.contentTypeCategory !== 'sse') || !metadata.hasBodyStream)
       throw new Stop('expected_event_stream');
-    for await (const event of sse(response.body)) {
+    let seenCreated = false;
+    let responseId = null;
+    let eventCount = 0;
+    const allowed = new Set(['response.created', 'response.in_progress',
+      'response.output_item.added', 'response.output_item.done',
+      'response.content_part.added', 'response.content_part.done',
+      'response.output_text.delta', 'response.output_text.done',
+      'response.reasoning_summary_text.delta', 'response.reasoning_summary_text.done',
+      'response.completed', 'response.failed', 'response.incomplete', 'error']);
+    for await (const event of sse(response.body, { strictMissingMime: missingMime })) {
+      if (missingMime) {
+        if (++eventCount > 512 || !event || !allowed.has(event.type))
+          throw new Stop('missing_mime_unrecognized_event');
+        if (!seenCreated) {
+          if (event.type !== 'response.created' ||
+            event.response?.status !== 'in_progress' ||
+            typeof event.response?.id !== 'string' ||
+            !/^[A-Za-z0-9_-]{1,128}$/.test(event.response.id))
+            throw new Stop('missing_mime_missing_created');
+          seenCreated = true;
+          responseId = event.response.id;
+        } else if (event.type === 'response.created' || completed)
+          throw new Stop('missing_mime_invalid_order');
+        if (event.type === 'response.completed' && event.response?.id !== responseId)
+          throw new Stop('missing_mime_response_mismatch');
+      }
       if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') {
         text += event.delta;
         if (text.length > 16_384) throw new Stop('unexpected_output_size');
@@ -232,8 +294,10 @@ export async function textRequest(accessToken, model, fetchImpl = fetch) {
       }
     }
     if (!completed) throw new Stop('stream_without_completion');
-    // Never write arbitrary generated content to stdout/evidence.
-    return { completed: true, expectedText: text.trim() === 'NEYDRA_AUTH_OK', ...metadata };
+    // A result without MIME is accepted only after the full, checked SSE sequence.
+    // No generated text or raw response body is emitted, only a boolean.
+    return { completed: true, expectedText: text.trim() === 'NEYDRA_AUTH_OK',
+      missingMimeStreamValidated: missingMime, ...metadata };
   } catch (error) {
     const stop = error instanceof Stop ? error : new Stop('interrupted_stream');
     Object.assign(stop, metadata);
