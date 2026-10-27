@@ -15,6 +15,38 @@ Questo è un esperimento **Node per il futuro processo main di Electron**: non
 include una finestra Electron, un renderer o un'applicazione pronta da distribuire.
 Non richiede installazione npm, chiavi API, backend o servizi aggiuntivi.
 
+## Experimental strict handling for HTTP 200 with missing Content-Type
+
+This branch now contains a **candidate** fix in `auth.mjs`, introduced after
+the two owner-reported HTTP 200 / missing-MIME responses. **It has not been
+executed against a real authenticated response and is not proven to fix inference.**
+
+Unlike the previous strict MIME guard, a `200` with a missing/blank MIME and
+an actual ReadableStream can now be inspected **in that same HTTP response**.
+The client attempts to validate SSE framing, UTF-8, a `response.created`
+envelope with a stable response ID, events in the `response.*` namespace and
+a matching terminal `response.completed`. A successful result adds
+`missingMimeStreamValidated:true` and still separately reports
+`expectedText:true/false`. It never prints the generated text.
+
+Safeguards: an explicit JSON/HTML/other MIME remains blocked; a missing body
+or non-200 response without MIME remains blocked; 262144 bytes cumulative,
+65536 buffered characters and at most 512 SSE frames/events, with the existing
+request timeout and output length cap; no retries, endpoint changes, key-based
+billing fallback, raw response logging or automatic second request.
+Arbitrary JSON/HTML, malformed SSE, mismatched response IDs, failure events,
+incomplete streams and absent completion fail closed.
+
+The separate `sse-proposal.mjs` is still an isolated offline research artifact,
+**not** imported into production. The test
+`test/missing-mime-runtime.test.mjs` verifies this new runtime path exclusively
+through mocked response bodies.
+
+Run syntax/tests on Windows **before** even considering another user-approved
+interactive request. The prior two live tests are complete; this code commit
+does not authorize an additional live test or any cloud OAuth/inference.
+Third-party OSS test tools are unnecessary for this implementation.
+
 ## Verifiche locali riproducibili
 
 Prerequisiti: Node.js 24 o successivo, terminale PowerShell interattivo sul computer
