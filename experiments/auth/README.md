@@ -1,14 +1,15 @@
 # Esperimento P0A: autenticazione ufficiale con piano ChatGPT
 
 **Esito: `UNVERIFIED`.** Il proprietario ha segnalato consenso reale e catalogo
-modelli riusciti, poi `BLOCKED/expected_event_stream` alla richiesta con
-`gpt-5.6-luna`. Il completamento dell'inferenza e i costi non sono provati.
+modelli riusciti. La seconda e ultima prova reale con `gpt-5.6-luna` ha restituito
+HTTP 200, categoria MIME `missing`, corpo presente e `BLOCKED/expected_event_stream`.
+Il completamento dell'inferenza e i costi non sono provati.
 [Fonti e risultati](FINDINGS.md). Nessuna modifica al 3D.
 
 **Follow-up corrente: solo analisi e test simulati.** Non eseguire `npm start`,
-`run.mjs`, OAuth o inferenza. Le istruzioni reali sotto sono sospese: una nuova
-prova richiede nuova autorizzazione esplicita del proprietario e ricontrollo dei
-vincoli di costo. Questa modifica non ripete la richiesta fallita.
+`run.mjs`, OAuth o inferenza. Le due prove autorizzate sono concluse: non ripeterle
+e non chiedere al proprietario altri tentativi. Le istruzioni reali sotto sono
+sospese. Vedi l'[analisi e proposta offline sul MIME mancante](MISSING_MIME_ANALYSIS.md).
 
 Questo è un esperimento **Node per il futuro processo main di Electron**: non
 include una finestra Electron, un renderer o un'applicazione pronta da distribuire.
@@ -32,8 +33,8 @@ npm test
 Remove-Item Env:\NEYDRA_TEST_LOOPBACK
 ```
 
-Il primo test esegue 27 casi senza rete e salta 2 test socket. Il secondo deve
-eseguire tutti i 29 casi. I callback sintetici dei test non aprono OpenAI e non
+Il primo test esegue 57 casi senza rete e salta 2 test socket. Il secondo deve
+eseguire tutti i 59 casi. I callback sintetici dei test non aprono OpenAI e non
 rappresentano un consenso OAuth. Se il bind locale è vietato, quei test non sono
 verificati: non aggirare firewall o policy con privilegi amministrativi.
 
@@ -127,6 +128,10 @@ e parametri; una semplice sottostringa non basta. JSON, HTML, header mancante o
 corpo assente continuano a bloccare l'inferenza; un SSE valido richiede ancora
 `response.completed`. Nessun retry, lettura del corpo inatteso o fallback.
 Lo schema di `evidence.example.json` è ora versione 2.
+
+Il prototipo `sse-proposal.mjs` studia un riconoscimento strutturale limitato
+**solo con fixture**. Non è collegato a questo guard: `textRequest()` continua a
+rifiutare MIME mancante senza leggere il corpo. Non equivale a inferenza risolta.
 
 ## Dati locali e interruzione
 

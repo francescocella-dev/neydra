@@ -3,7 +3,9 @@
 **Stato complessivo: `UNVERIFIED`.** Esiste un percorso ufficialmente documentato
 per OSS locale compatibile con il progetto. Il proprietario ha segnalato OAuth e
 catalogo riusciti, poi `BLOCKED/expected_event_stream` alla prima richiesta reale.
-Il completamento dell'inferenza e i costi rimangono da verificare. L'agente non ha
+La seconda e ultima prova segnala HTTP 200, MIME `missing` e corpo presente:
+vedi [analisi e proposta offline](MISSING_MIME_ANALYSIS.md). Il completamento
+dell'inferenza e i costi rimangono da verificare. L'agente non ha
 eseguito OAuth o inferenza; il follow-up autorizza solo analisi e test simulati.
 
 ## Piano e perimetro
@@ -84,7 +86,8 @@ tentato un login nel cloud. Non sono state aggiunte dipendenze o artefatti ester
 | Integrazione Electron, storage sicuro persistente, refresh | Fuori dal probe; non verificati |
 
 Nessun `PASS` complessivo. Il blocco corrente è la risposta HTTP non accettata dal
-guard SSE nella prova del proprietario, con metadati originali non registrati.
+guard SSE: nella seconda prova HTTP 200, categoria MIME `missing` e corpo presente,
+senza lettura del contenuto. Il formato e l'origine del corpo restano ignoti.
 Ulteriori rischi: cambiamenti della preview, quota condivisa limitata, modelli e
 policy account variabili, algoritmo ID token diverso da RS256 rifiutato, revisione
 OIDC/Electron necessaria prima della distribuzione. Il runbook non può certificare
@@ -138,7 +141,8 @@ dell'evidenza. Ogni richiesta simulata verifica una sola chiamata, endpoint e
 parametri protetti. Nessun avvio di `run.mjs`, OAuth, probe Codex o inferenza reale.
 
 **Prossimo passo consentito:** revisione del commit e test simulati sul PC.
-Qualsiasi ulteriore prova reale richiede nuova autorizzazione esplicita del
-proprietario, quota inclusa disponibile, saldo crediti acquistati ancora zero,
-ricarica disattivata e controllo di assenza di addebiti. Nessun retry automatico.
+Le due prove live autorizzate sono ora concluse. Non richiedere né eseguire altri
+tentativi. Il successivo prototipo isolato è documentato in
+[MISSING_MIME_ANALYSIS.md](MISSING_MIME_ANALYSIS.md): 57 test simulati superati,
+2 socket saltati, nessun collegamento al percorso reale. Inferenza BLOCKED,
 PR in bozza e risultato complessivo `UNVERIFIED`.
