@@ -1,18 +1,19 @@
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
-import type { Connection, DesktopStatus } from '../shared/contracts';
+import type { DesktopStatus } from '../shared/contracts';
 import { ChatPanel } from './ChatPanel';
+import { SettingsPanel } from './SettingsPanel';
+import { connectionLabel, initialChatView } from './chat-view';
 import { demoReducer, initialState } from './model';
-
-const disconnected: Connection = { state: 'disconnected', models: [] };
 
 export function App() {
   const [status, setStatus] = useState<DesktopStatus | null>(null);
   const [bridgeError, setBridgeError] = useState(false);
-  const [connection, setConnection] = useState<Connection>(disconnected);
+  const [chatView, setChatView] = useState(initialChatView);
   const [chatOpen, setChatOpen] = useState(true);
   const [telemetryOpen, setTelemetryOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const [windowNotice, setWindowNotice] = useState('');
   const [prompt, setPrompt] = useState('Prova dello streaming locale');
   const [demo, dispatch] = useReducer(demoReducer, initialState);
@@ -29,34 +30,29 @@ export function App() {
     });
     void window.neydra.getStatus().then(value => { if (mounted) setStatus(value); })
       .catch(() => { if (mounted) setBridgeError(true); });
-    const refreshConnection = () => {
-      void window.neydra.getConnection().then(value => { if (mounted) setConnection(value); })
-        .catch(() => { if (mounted) setBridgeError(true); });
-    };
-    refreshConnection();
-    const timer = setInterval(refreshConnection, 4000);
-    const onFullscreen = () => { if (mounted) setFullscreen(Boolean(document.fullscreenElement)); };
-    document.addEventListener('fullscreenchange', onFullscreen);
-    return () => {
-      mounted = false; off(); clearInterval(timer);
-      document.removeEventListener('fullscreenchange', onFullscreen);
-    };
+    const offWindow = window.neydra.onWindowState(value => { if (mounted) setFullscreen(value.fullscreen); });
+    void window.neydra.getWindowState().then(result => {
+      if (mounted && result.ok) setFullscreen(result.state.fullscreen);
+    }).catch(() => { if (mounted) setWindowNotice('Stato finestra non disponibile.'); });
+    return () => { mounted = false; off(); offWindow(); };
   }, []);
 
   async function toggleFullscreen() {
     try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await document.documentElement.requestFullscreen();
+      const result = await window.neydra.setFullscreen({ enabled: !fullscreen });
+      if (!result.ok) { setWindowNotice('Schermo intero non disponibile su questa configurazione.'); return; }
+      setFullscreen(result.state.fullscreen);
       setWindowNotice('');
-    } catch {
-      setWindowNotice('Schermo intero non disponibile su questa configurazione.');
-    }
+    } catch { setWindowNotice('Schermo intero non disponibile su questa configurazione.'); }
   }
 
   function showAccount() {
     setSettingsOpen(false);
     setChatOpen(true);
-    requestAnimationFrame(() => document.getElementById('chat-title')?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    requestAnimationFrame(() => {
+      const account = document.getElementById('chat-account') as HTMLDetailsElement | null;
+      if (account) { account.open = true; account.querySelector('summary')?.focus(); account.scrollIntoView({ block: 'nearest' }); }
+    });
   }
 
   async function stop() {
@@ -74,11 +70,6 @@ export function App() {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && activeId.current) {
         void window.neydra.cancel({ requestId: activeId.current }).catch(() => setBridgeError(true));
-      }
-      if (event.key === 'F11') {
-        event.preventDefault();
-        const action = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
-        void action.catch(() => setWindowNotice('Schermo intero non disponibile su questa configurazione.'));
       }
     };
     window.addEventListener('keydown', onKey);
@@ -100,78 +91,54 @@ export function App() {
     dispatch({ type: 'rejected', requestId });
   }
 
+
+  const { connection, selectedModel } = chatView;
+  const selectedName = connection.models.find(model => model.slug === selectedModel)?.name;
   const layout = ['mini-layout', !chatOpen ? 'chat-collapsed' : '', !telemetryOpen ? 'telemetry-collapsed' : ''].filter(Boolean).join(' ');
 
-  return <div className="mini-shell">
+  return <div className={`mini-shell${reducedMotion ? ' motion-paused' : ''}`}>
     <div className="energy-field" aria-hidden="true">
-      <svg className="energy-lines" viewBox="0 0 1440 900" preserveAspectRatio="none">
-        <path className="energy energy-one" d="M-70 710 C220 490 300 800 580 440 S1030 190 1520 30" />
-        <path className="energy energy-two" d="M-90 845 C260 700 445 630 650 590 S1150 330 1530 480" />
-        <path className="energy energy-three" d="M430 -70 C340 260 510 350 690 480 S980 650 1120 970" />
+      <svg className="energy-lines" viewBox="0 0 1440 1000" preserveAspectRatio="none">
+        <path className="energy-base" d="M-100 860 C130 700 170 930 390 660 S690 480 820 260 S1190 180 1510 -40" />
+        <path className="energy energy-one" d="M-100 860 C130 700 170 930 390 660 S690 480 820 260 S1190 180 1510 -40" />
+        <path className="energy-base" d="M-80 260 C180 110 300 360 500 490 S800 650 1030 800 S1330 820 1510 1060" />
+        <path className="energy energy-two" d="M-80 260 C180 110 300 360 500 490 S800 650 1030 800 S1330 820 1510 1060" />
+        <path className="energy energy-three" d="M120 -80 C290 120 160 330 300 510 S600 800 490 1080" />
       </svg>
     </div>
     <header className="mini-topbar">
-      <div className="brand"><span className="brand-mark" aria-hidden="true">N</span>
-        <div><div className="brand-name">NEYDRA</div><span className="brand-caption">MINI · DESKTOP COMPANION</span></div>
-      </div>
-      <div className="topbar-actions" aria-label="Comandi interfaccia">
-        <button type="button" aria-pressed={chatOpen} onClick={() => setChatOpen(value => !value)}>{chatOpen ? 'Nascondi trascrizione' : 'Apri trascrizione'}</button>
-        <button type="button" aria-pressed={telemetryOpen} onClick={() => setTelemetryOpen(value => !value)}>{telemetryOpen ? 'Nascondi stato' : 'Mostra stato'}</button>
-        <button type="button" onClick={() => { void toggleFullscreen(); }}>{fullscreen ? 'Esci da schermo intero' : 'Schermo intero'}</button>
-        <button type="button" aria-expanded={settingsOpen} aria-controls="mini-settings" onClick={() => setSettingsOpen(value => !value)}>Impostazioni</button>
-      </div>
+      <div className="brand"><span className="brand-mark" aria-hidden="true">N</span><div><span className="brand-name">NEYDRA</span><span className="brand-caption">Il tuo spazio, con Mini</span></div></div>
+      <nav className="topbar-actions" aria-label="Comandi interfaccia">
+        <button type="button" aria-pressed={chatOpen} aria-controls="conversation-panel" onClick={() => setChatOpen(value => !value)}>{chatOpen ? 'Nascondi chat' : 'Apri chat'}</button>
+        <button type="button" aria-pressed={telemetryOpen} aria-controls="status-panel" onClick={() => setTelemetryOpen(value => !value)}>{telemetryOpen ? 'Nascondi stato' : 'Mostra stato'}</button>
+        <button type="button" className={fullscreen ? 'fullscreen-exit' : ''} onClick={() => { void toggleFullscreen(); }}>{fullscreen ? 'Esci da schermo intero' : 'Schermo intero'} <kbd>F11</kbd></button>
+        <button type="button" aria-expanded={settingsOpen} aria-controls="mini-settings" onClick={() => setSettingsOpen(true)}>Impostazioni <span aria-hidden="true">⚙</span></button>
+      </nav>
     </header>
-
     {windowNotice && <p className="window-notice" role="alert">{windowNotice}</p>}
-
     <main className={layout}>
       <section className="avatar-zone" aria-label="Area riservata a Neydra Mini">
-        <div className="avatar-halo" aria-hidden="true"><span className="halo-center"/></div>
-        <div className="avatar-caption">
-          <span className="eyebrow">NEYDRA MINI</span>
-          <h1>Una presenza.<br/>Sempre pronta.</h1>
-          <p>Il modello 3D definitivo sarà collegato qui quando il lavoro su Mini sarà pronto.</p>
-          <div className="avatar-state"><span className="state-dot"/> In attesa · avatar non integrato</div>
-        </div>
+        <div className="stage-heading"><div><span className="eyebrow">NEYDRA</span><h1>Mini<span className="orange-point">.</span></h1></div><span className="stage-tag">Spazio personale</span></div>
+        <div className="stage-light" aria-hidden="true" />
+        <div className="stage-guide guide-top" aria-hidden="true"/><div className="stage-guide guide-bottom" aria-hidden="true"/>
+        <div className="avatar-caption"><span className="stage-indicator" aria-hidden="true"/><p>Uno spazio per Mini.<span>Il modello 3D definitivo sarà collegato qui.</span></p></div>
       </section>
-
-      <section className="conversation-zone" aria-label="Conversazione ChatGPT" hidden={!chatOpen}>
-        <div className="panel-heading"><div><span className="eyebrow">CONVERSAZIONE</span><h2>Trascrizione e chat</h2></div>
-          <button type="button" aria-label="Chiudi trascrizione" onClick={() => setChatOpen(false)}>Chiudi</button>
-        </div>
-        <div className="conversation-scroll"><ChatPanel /></div>
+      <section id="conversation-panel" className="conversation-zone" aria-label="Conversazione ChatGPT" hidden={!chatOpen}>
+        <header className="panel-heading"><div><span className="eyebrow">Il filo del dialogo</span><h2>Conversazione</h2></div><button type="button" className="quiet-button" aria-label="Chiudi chat" onClick={() => setChatOpen(false)}>Chiudi <span aria-hidden="true">×</span></button></header>
+        <ChatPanel onViewState={setChatView} />
       </section>
-
-      <aside className="telemetry-zone" aria-label="Stato NEYDRA" hidden={!telemetryOpen}>
-        <div className="panel-heading"><div><span className="eyebrow">PANORAMICA</span><h2>Stato NEYDRA</h2></div>
-          <button type="button" aria-label="Chiudi pannello stato" onClick={() => setTelemetryOpen(false)}>Chiudi</button>
+      <aside id="status-panel" className="telemetry-zone" aria-label="Stato e utilizzo" hidden={!telemetryOpen}>
+        <header className="panel-heading"><div><span className="eyebrow">Qui e adesso</span><h2>Stato e utilizzo</h2></div><button type="button" className="quiet-button" aria-label="Chiudi pannello stato" onClick={() => setTelemetryOpen(false)}>×</button></header>
+        <div className="status-cards">
+          <section className="metric-card connection-card"><span className="metric-label">ChatGPT · ultimo stato noto</span><strong className={connection.state === 'connected' ? 'metric-connected' : ''}><i className="state-dot"/>{connectionLabel[connection.state]}</strong><p>{connection.state === 'connected' ? 'Connessione del piano autorizzata.' : 'Collega il tuo account dalle impostazioni.'}</p><button type="button" className="text-button" onClick={showAccount}>Gestisci connessione <span aria-hidden="true">↗</span></button></section>
+          <section className="metric-card"><span className="metric-label">Modello selezionato</span><strong>{selectedName || 'Da scegliere'}</strong><p>{selectedModel || (connection.state === 'connected' ? `${connection.models.length} modelli nel catalogo autorizzato` : 'Il catalogo sarà disponibile dopo l’accesso.')}</p></section>
+          <section className="metric-card"><span className="metric-label">Sessione e contesto</span><strong>{chatView.running ? 'Risposta in corso' : chatView.hasConversation ? 'Conversazione in memoria' : 'Pronto per una conversazione'}</strong><p>I turni completati restano nella sessione. Nessun archivio permanente.</p></section>
+          <section className="metric-card usage-card"><span className="metric-label">Utilizzo del piano</span><strong>Quota non disponibile</strong><p>Verifica limiti, crediti e ricarica nell’account ChatGPT prima di ogni invio. Nessuna stima locale.</p></section>
         </div>
-        <div className="metric-card"><span>Connessione ChatGPT</span>
-          <strong className={connection.state === 'connected' ? 'metric-connected' : ''}>{connection.state}</strong></div>
-        <div className="metric-card"><span>Modelli disponibili</span><strong>{connection.models.length}</strong>
-          <small>Selezionabili nella conversazione dopo il collegamento.</small></div>
-        <div className="metric-card"><span>Contesto</span><strong>Solo sessione corrente</strong>
-          <small>Nessuna memoria permanente implementata.</small></div>
-        <div className="metric-card"><span>Consumo e quota settimanale</span><strong>Dato non disponibile</strong>
-          <small>NEYDRA non riceve i contatori ufficiali del piano. Non vengono stimate percentuali.</small></div>
-        <div className="metric-card"><span>Voce</span><strong>In preparazione</strong>
-          <small>Il microfono non viene aperto e non viene acquisito audio.</small></div>
       </aside>
     </main>
-
-    {settingsOpen && <div className="settings-backdrop" onClick={() => setSettingsOpen(false)}>
-      <section id="mini-settings" className="settings-drawer" aria-label="Impostazioni NEYDRA" onClick={event => event.stopPropagation()}>
-        <div className="panel-heading"><div><span className="eyebrow">PREFERENZE</span><h2>Impostazioni</h2></div>
-          <button type="button" onClick={() => setSettingsOpen(false)}>Chiudi</button>
-        </div>
-        <div className="settings-group"><h3>Tema attivo</h3><p>NEYDRA Mini · grafite e arancio. Il tema Holo sarà sviluppato in una fase separata.</p></div>
-        <div className="settings-group"><h3>ChatGPT e modelli</h3><p>Accesso, disconnessione e selezione del modello sono già operativi nella sezione conversazione.</p>
-          <button type="button" onClick={showAccount}>Apri accesso ChatGPT</button></div>
-        <div className="settings-group"><h3>Voce e ascolto</h3><p>Modalità ibrida approvata; implementazione audio non ancora collegata. Microfono disattivato.</p></div>
-        <div className="settings-group"><h3>Finestra</h3>
-          <button type="button" onClick={() => { void toggleFullscreen(); }}>{fullscreen ? 'Esci da schermo intero' : 'Attiva schermo intero'}</button></div>
-        <details className="developer-tools">
-          <summary>Strumenti tecnici · demo offline</summary>
+    <SettingsPanel open={settingsOpen} onDismiss={() => setSettingsOpen(false)} onAccount={showAccount} fullscreen={fullscreen} onFullscreen={() => { void toggleFullscreen(); }} reducedMotion={reducedMotion} onReducedMotion={setReducedMotion}>
+      <details className="developer-tools"><summary>Banco di prova offline</summary>
           <section className="demo" aria-labelledby="demo-title">
             <h3 id="demo-title">Banco di prova offline</h3>
             <p>Il testo è predefinito, resta locale e non viene inviato a ChatGPT.</p>
@@ -186,10 +153,9 @@ export function App() {
               </div>
             </form>
           </section>
-        </details>
-      </section>
-    </div>}
 
-    <footer className="mini-footer"><span>NEYDRA MINI · prima interfaccia</span><span>ChatGPT solo su consenso · Voce e 3D non ancora integrati</span></footer>
+      </details>
+    </SettingsPanel>
+    <footer className="mini-footer"><span><i className="footer-dot"/> Mini · anteprima dell’interfaccia</span><span>Voce e modello 3D non ancora integrati</span></footer>
   </div>;
 }

@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, net, protocol, session, shell } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { WINDOW_CHANNELS } from '../shared/window-contracts';
+import { windowCommand, fullscreenShortcut } from './window-controls';
 import { CHANNELS } from '../shared/contracts';
 import { ChatGPTAdapter } from './chatgpt/adapter';
 import { registrationStore } from './chatgpt/registration';
@@ -35,7 +37,7 @@ async function createWindow() {
   });
   const current = new BrowserWindow({
     title: 'NEYDRA — desktop sperimentale', width: 1280, height: 860, minWidth: 720, minHeight: 600,
-    backgroundColor: '#050B14', show: false,
+    backgroundColor: '#090a0c', show: false,
     webPreferences: { ...rendererPreferences, session: isolatedSession, preload: join(__dirname, '../preload/index.cjs') },
   });
   window = current;
@@ -52,6 +54,17 @@ async function createWindow() {
     try { return await service.handle(payload); }
     catch { return { ok: false, code: 'internal' }; }
   });
+  ipcMain.handle(WINDOW_CHANNELS.invoke, (event, payload: unknown) => windowCommand(payload,
+    trustedSender(event.sender.id, contents.id, event.senderFrame?.url, event.senderFrame === contents.mainFrame), current));
+  const publishWindowState = () => {
+    if (!contents.isDestroyed()) contents.send(WINDOW_CHANNELS.event, { fullscreen: current.isFullScreen() });
+  };
+  current.on('enter-full-screen', publishWindowState);
+  current.on('leave-full-screen', publishWindowState);
+  contents.on('before-input-event', (event, input) => {
+    try { if (fullscreenShortcut(input, current)) event.preventDefault(); }
+    catch { publishWindowState(); }
+  });
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
   contents.on('will-navigate', event => event.preventDefault());
   contents.on('will-frame-navigate', event => event.preventDefault());
@@ -61,6 +74,7 @@ async function createWindow() {
   current.on('closed', () => {
     service.dispose();
     ipcMain.removeHandler(CHANNELS.invoke);
+    ipcMain.removeHandler(WINDOW_CHANNELS.invoke);
     isolatedSession.protocol.unhandle('app');
     window = undefined;
   });

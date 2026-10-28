@@ -23,7 +23,7 @@ beforeEach(() => {
 
 it('exposes only the named narrow frozen API, without raw IPC', () => {
   expect(exposedName).toBe('neydra');
-  expect(Object.keys(bridge).sort()).toEqual(['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'onEvent', 'resetChat', 'startChatGPT', 'startOfflineDemo']);
+  expect(Object.keys(bridge).sort()).toEqual(['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'getWindowState', 'onEvent', 'onWindowState', 'resetChat', 'setFullscreen', 'startChatGPT', 'startOfflineDemo']);
   expect(Object.isFrozen(bridge)).toBe(true);
 });
 
@@ -69,4 +69,25 @@ it('validates connection and real-request DTOs; OAuth URLs, credentials and head
   electron.invoke.mockResolvedValueOnce({ ok: true });
   expect(await bridge.startChatGPT({ requestId, prompt: 'fixture', model: 'visible', consent: 'included-plan-checked' })).toEqual({ ok: true });
   expect(electron.invoke).toHaveBeenLastCalledWith(CHANNELS.invoke, { type: 'startChatGPT', input: { requestId, prompt: 'fixture', model: 'visible', consent: 'included-plan-checked' } });
+});
+
+it('validates the isolated fullscreen API and strips private event objects', async () => {
+  const { WINDOW_CHANNELS } = await import('../src/shared/window-contracts');
+  expect(await bridge.setFullscreen({ enabled: true, url: 'https://example.org' } as never)).toMatchObject({ code: 'invalid-request' });
+  expect(electron.invoke).not.toHaveBeenCalled();
+  electron.invoke.mockResolvedValueOnce({ ok: true, state: { fullscreen: true } });
+  expect(await bridge.setFullscreen({ enabled: true })).toEqual({ ok: true, state: { fullscreen: true } });
+  expect(electron.invoke).toHaveBeenLastCalledWith(WINDOW_CHANNELS.invoke, { type: 'setFullscreen', input: { enabled: true } });
+  electron.invoke.mockResolvedValueOnce({ ok: true, state: { fullscreen: false, token: 'fixture' } });
+  await expect(bridge.getWindowState()).rejects.toThrow();
+  const listener = vi.fn();
+  const off = bridge.onWindowState(listener);
+  const [channel, handler] = electron.on.mock.calls[0]!;
+  expect(channel).toBe(WINDOW_CHANNELS.event);
+  handler({ private: 'fixture' }, { fullscreen: true, token: 'fixture' });
+  expect(listener).not.toHaveBeenCalled();
+  handler({ private: 'fixture' }, { fullscreen: true });
+  expect(listener).toHaveBeenCalledWith({ fullscreen: true });
+  off();
+  expect(electron.removeListener).toHaveBeenCalledWith(WINDOW_CHANNELS.event, handler);
 });

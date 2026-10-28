@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { WindowBridge } from './window-contracts';
 
 export const PROTOCOL_VERSION = 2 as const;
 export const CHANNELS = { invoke: 'neydra:v2:invoke', event: 'neydra:v2:event' } as const;
@@ -107,7 +108,7 @@ export interface VoicePort {
   stop(): void;
 }
 
-export interface DesktopBridge {
+export interface DesktopBridge extends WindowBridge {
   getStatus(): Promise<DesktopStatus>;
   getConnection(): Promise<Connection>;
   connectChatGPT(input: z.infer<typeof connectSchema>): Promise<Result>;

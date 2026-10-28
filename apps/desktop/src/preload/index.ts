@@ -1,7 +1,22 @@
+import { WINDOW_CHANNELS, fullscreenInputSchema, windowResultSchema, windowStateSchema } from '../shared/window-contracts';
 import { contextBridge, ipcRenderer } from 'electron';
 import { CHANNELS, connectionSchema, connectSchema, realSchema, cancelSchema, responseSchema, resultSchema, startSchema, statusSchema, streamEventSchema, type DesktopBridge } from '../shared/contracts';
 
 const bridge = Object.freeze<DesktopBridge>({
+  async getWindowState() { return windowResultSchema.parse(await ipcRenderer.invoke(WINDOW_CHANNELS.invoke, { type: 'getState' })); },
+  async setFullscreen(input) {
+    const parsed = fullscreenInputSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, code: 'invalid-request' };
+    return windowResultSchema.parse(await ipcRenderer.invoke(WINDOW_CHANNELS.invoke, { type: 'setFullscreen', input: parsed.data }));
+  },
+  onWindowState(listener) {
+    const handler = (_event: Electron.IpcRendererEvent, raw: unknown) => {
+      const parsed = windowStateSchema.safeParse(raw);
+      if (parsed.success) listener(parsed.data);
+    };
+    ipcRenderer.on(WINDOW_CHANNELS.event, handler);
+    return () => ipcRenderer.removeListener(WINDOW_CHANNELS.event, handler);
+  },
   async getStatus() {
     const result = responseSchema.parse(await ipcRenderer.invoke(CHANNELS.invoke, { type: 'status' }));
     if (!result.ok) throw new Error('Desktop status unavailable');

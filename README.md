@@ -6,6 +6,8 @@ NEYDRA is a Windows-first personal AI interface planned around two original, swi
 
 > **Project status: PRE-ALPHA.** This branch prepares an optional Sign in with ChatGPT/text adapter in the Electron main process alongside the existing offline demo. The new Windows integration is UNVERIFIED until the owner tests it in the app; no installer is provided. PR #6 proved a separate Plus probe. The 3D engine in PR #7 remains separate.
 
+Mini UI phase 2: [Premium Tech and Windows runbook](docs/NEYDRA_MINI_PREMIUM_PHASE2.md) · [offline report](apps/desktop/evidence/MINI_PHASE2_REPORT.md).
+
 ChatGPT candidate: [PowerShell and Windows validation gate](docs/DESKTOP_CHATGPT.md) · [offline verification report](apps/desktop/evidence/CHATGPT_REPORT.md).
 
 Desktop shell: [PowerShell setup, contracts and limits](docs/DESKTOP.md) · [verification](apps/desktop/evidence/REPORT.md).

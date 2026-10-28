@@ -15,7 +15,7 @@ runInNewContext(source, {
     };
   },
 });
-assert.deepEqual(Object.keys(exposed).sort(), ['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'onEvent', 'resetChat', 'startChatGPT', 'startOfflineDemo']);
+assert.deepEqual(Object.keys(exposed).sort(), ['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'getWindowState', 'onEvent', 'onWindowState', 'resetChat', 'setFullscreen', 'startChatGPT', 'startOfflineDemo']);
 assert.equal((await exposed.getStatus()).mode, 'offline');
 assert.equal((await exposed.startOfflineDemo({ requestId: 'invalid', prompt: 'test' })).ok, false);
 console.log('Bundled preload structure: PASS (VM with mocked Electron; not a runtime sandbox test)');
