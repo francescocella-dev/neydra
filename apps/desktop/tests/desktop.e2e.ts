@@ -9,6 +9,14 @@ test('real Electron bridge, security, offline stream, interruption and reload', 
     const page = await desktop.firstWindow();
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
+    await expect(page.getByRole('heading', { name: 'Trascrizione e chat' })).toBeVisible();
+    await expect(page.getByText('NEYDRA MINI', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Nascondi trascrizione' }).click();
+    await expect(page.locator('.conversation-zone')).toBeHidden();
+    await page.getByRole('button', { name: 'Apri trascrizione' }).click();
+    await expect(page.locator('.conversation-zone')).toBeVisible();
+    await page.getByRole('button', { name: 'Impostazioni' }).click();
+    await page.getByText('Strumenti tecnici · demo offline').click();
     await expect(page.getByRole('button', { name: 'Avvia demo offline' })).toBeEnabled();
     expect(await desktop.evaluate(({ app }) => app.commandLine.hasSwitch('no-sandbox'))).toBe(false);
     expect(await page.evaluate(() => ({ require: typeof Reflect.get(window, 'require'), process: typeof Reflect.get(window, 'process'), keys: Object.keys(window.neydra).sort() })))
@@ -27,8 +35,7 @@ test('real Electron bridge, security, offline stream, interruption and reload', 
     await page.getByRole('button', { name: 'Avvia demo offline' }).click();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('status')).toHaveText('Demo offline annullata');
-    await page.getByLabel('Preferenza avatar futura').selectOption('mini');
-    await expect(page.getByLabel('Preferenza avatar futura')).toHaveValue('mini');
+    await expect(page.getByText('Il modello 3D definitivo sarà collegato qui quando il lavoro su Mini sarà pronto.')).toHaveCount(1);
     expect(await page.evaluate(async () => {
       try { await fetch('https://example.org'); return 'allowed'; } catch { return 'blocked'; }
     })).toBe('blocked');
@@ -37,9 +44,12 @@ test('real Electron bridge, security, offline stream, interruption and reload', 
     expect(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
     await page.getByRole('button', { name: 'Avvia demo offline' }).click();
     await page.reload();
+    await page.getByRole('button', { name: 'Impostazioni' }).click();
+    await page.getByText('Strumenti tecnici · demo offline').click();
     await expect(page.getByRole('button', { name: 'Avvia demo offline' })).toBeEnabled();
     await page.getByRole('button', { name: 'Avvia demo offline' }).click();
     await expect(page.getByRole('status')).toHaveText('Demo offline completata');
+    await page.locator('#mini-settings').getByRole('button', { name: 'Chiudi' }).click();
     await mkdir('evidence', { recursive: true });
     await page.screenshot({ path: 'evidence/desktop-offline.png' });
     await page.setViewportSize({ width: 760, height: 800 });
