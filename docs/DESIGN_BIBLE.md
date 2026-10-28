@@ -19,7 +19,12 @@ Two desktop concept images were created in the NEYDRA project chat (Holo and Min
 - These are starting points to refine through visible screenshots and user review.
 
 ## Holo
-3D humanoid head (original design, not a copy of Gideon), elegant sci-fi femininity, coherent proportions, subtle head/eye motion, readable expression. Holographic shader, translucent mesh and restrained particle/vapor effect. Eye blinks, brow/mouth animation require **mesh-based morph targets or rigging**, not only texture cycling.
+An **original**, genuine 3D face made of translucent ice/cyan light: gently feminine-neutral, **no hair, eyebrows, drawn lips, neck or body**. The lower contour dissolves into a virtual light beam from a bottom-center optical aperture; **no webcam permission**. Real eyelid and mouth articulation, subtle gaze/head motion, viseme-driven speech and accessible reduced-motion mode are mandatory. No direct reproduction of Gideon or any actor. All exact Holo colors, material tuning envelopes, motion values and the parallel UI/3D interface are specified in:
+- [HOLO_VISUAL_SPEC.md](HOLO_VISUAL_SPEC.md) — approved visual direction, acceptance;
+- [design/holo.tokens.json](../design/holo.tokens.json) — canonical design values; [generated CSS](../design/holo.tokens.css);
+- [HOLO_PARALLEL_WORK.md](HOLO_PARALLEL_WORK.md) — separated theme / 3D implementation handoff.
+
+**Status:** design-only, not proof of an existing 3D asset or working UI theme.
 
 ## Mini
 Premium warm robot in genuine 3D; rounded shell, gentle head/body animation, luminous curved face display with readable expression, eye blinks, attentive tilts, little idle motions. Eyes/mouth may be emissive geometry or material on a modeled visor; shell/body stays actually 3D. Cute without looking like a children's toy.
