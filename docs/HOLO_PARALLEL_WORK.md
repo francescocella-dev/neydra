@@ -1,6 +1,6 @@
 # HOLO — parallel implementation contract (UI theme and 3D model)
 
-This handoff supplements [Holo visual specification](HOLO_VISUAL_SPEC.md), [canonical tokens](../design/holo.tokens.json) and the [shared animation contract](DESIGN_BIBLE.md). It **does not authorize a release or merge**. As of 2026-10-28 the design is specified but **Holo UI, rig, shader and lip sync are not implemented or hardware-validated**.
+This handoff supplements the [Holo 3D prototype decision and gates](HOLO_3D_PROTOTYPE_PLAN.md), [Holo visual specification](HOLO_VISUAL_SPEC.md), [canonical tokens](../design/holo.tokens.json) and the [shared animation contract](DESIGN_BIBLE.md). It **does not authorize a release or merge**. As of 2026-10-28 the design is specified but **Holo UI, rig, shader and lip sync are not implemented or hardware-validated**.
 
 ## Dependency graph
 
