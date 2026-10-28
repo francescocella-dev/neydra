@@ -196,12 +196,16 @@ export async function exchange(tx, callback, previousSubject = null, fetchImpl =
   return { accessToken: tokens.access_token, identity, expiresAt: startedAt + tokens.expires_in * 1000 };
 }
 
+// The account-specific model catalogue can include verbose metadata for many
+// entries. Keep a separate, bounded budget for this response only; control-plane
+// OAuth/JWKS/error JSON remains restricted to the original 256 KiB ceiling.
+const MODEL_CATALOG_MAX_BYTES = 8 * 1024 * 1024;
 export async function models(accessToken, fetchImpl = fetch, signal = undefined) {
   const response = await request(`${RESOURCE}/models`, { signal,
     headers: { authorization: `Bearer ${accessToken}` },
   }, fetchImpl);
-  const body = await boundedJson(response);
-  if (!Array.isArray(body.models) || body.models.length > 512) throw new Stop('unexpected_model_catalog');
+  const body = await boundedJson(response, MODEL_CATALOG_MAX_BYTES);
+  if (!body || !Array.isArray(body.models) || body.models.length > 512) throw new Stop('unexpected_model_catalog');
   return body.models.filter(m => m.visibility === 'list' &&
     typeof m.slug === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(m.slug)).map(m => ({ slug: m.slug, name: typeof m.display_name === 'string' && m.display_name.trim() && m.display_name.length <= 128 ? m.display_name : m.slug }));
 }
