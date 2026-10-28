@@ -1,11 +1,14 @@
 # NEYDRA Mini — Companion V2
 
-PR #10 **DRAFT**, branch `feat/desktop-mini-interface`. Ultima baseline Windows
-`5dfc375a03bbe69e04e089070c8604b7643648f5`: il proprietario riferisce check/lint/
-typecheck/build, **125/125 unit, tre preload ed E2E immersivo PASS**. L'E2E companion
-fallisce perché i satelliti richiesti da 64 DIP misurano 65×65 nativi. Il candidato
-corrente richiede **72×72 DIP**, mantenendo i cerchi da 48. Nuovo E2E Windows e
-approvazione visiva restano da eseguire. [Report del follow-up](../apps/desktop/evidence/COMPANION_V2_REPORT.md#follow-up-windows-dimensioni-native-dei-satelliti).
+PR #10 **DRAFT**, branch `feat/desktop-mini-interface`. Baseline Windows
+`c965021b6cd0bb87c3debcb21ca6ab6c47bfbca6`: il proprietario riferisce check/lint/
+typecheck/build, **128/128 unit, tre preload ed E2E immersivo PASS**. Il companion
+fallisce perché il satellite richiesto da **72×72 DIP** misura **72×73** nativi
+(in precedenza 64 richiesti → 65×65). Mancano ancora contenuto/viewport/scala/DPR
+Windows: l'arrotondamento frameless è un'ipotesi, non una causa certificata.
+La richiesta resta 72×72; non si aumentano dimensioni o tolleranze.
+[Report corrente](../apps/desktop/evidence/COMPANION_V2_REPORT.md#follow-up-windows-dpi-e-json-persistente).
+Nuova prova GUI Windows ancora da eseguire dal proprietario.
 
 ## Riduzione e continuità
 
@@ -62,6 +65,36 @@ Il corpo del companion ha `appearance:none`, dimensioni CSS fisse, nessun
 transform o scale e indicatore di focus **interno**. Anche min/max dei bounds
 nativi sono fissati. Il drag chiama soltanto `setPosition`, senza resize. Il segno
 N resta temporaneo: nessun avatar fittizio, GLB o asset 3D aggiunto.
+
+### Contratto geometrico e misure DPI
+
+L'app garantisce **richiesta e min/max 72×72**, non l'identità fra dimensione
+richiesta e bounds restituiti dall'OS. I test host conservano queste opzioni esatte.
+I getter nativi di min/max sono raccolti come misure, anch'essi potenzialmente
+convertiti dall'OS. Non si forza il resize e non si assume che native, contenuto
+e viewport siano quadrati o identici fra loro.
+
+L'E2E mantiene esattamente core/contenuto **120×120**, corpo **112×112** e
+pulsanti satellite **48×48 CSS px**, raggio 50%. Il centro è calcolato dal viewport
+misurato: `(larghezza - 48)/2`, `(altezza - 48)/2`; a viewport 72×73 gli inset sono
+**12 e 12,5**, senza epsilon. Verifica anche outline entro il viewport, opacity 1,
+controllo abilitato e hit test del centro. Attende la fine delle animazioni: sono
+ammessi soltanto transform assente o matrice identità esatta (`translate(0,0)`
+lasciato dall'ultimo frame), mai scale o traslazioni residue.
+
+Bounds e contenuto devono essere validi e il contenuto dentro il rettangolo
+nativo. Tutte le finestre devono stare nelle work area reali, senza collisioni.
+Dimensioni/posizioni native e di contenuto, viewport, DPR e rettangolo del
+pulsante restano identici durante hover e navigazione Tab nello stesso menu.
+Click reali del test, focus ed Escape conservano le precedenti verifiche.
+
+Sono registrati separatamente richiesta, bounds, content bounds, min/max,
+resizable, zoom, scala del display, DPR e viewport di ogni finestra, associati
+con ID numerico. Su Windows `physicalBounds` è la conversione Electron
+`screen.dipToScreenRect`, **non una misura indipendente dell'HWND**. Non si deduce
+la causa DPI dal solo rapporto fra questi valori. Il controller e il CSS già
+usavano bounds/viewport effettivi: questo follow-up non modifica codice applicativo,
+preload o sicurezza; corregge la premessa dell'E2E e rende persistente l'evidenza.
 
 ## Menu e tastiera
 
@@ -143,6 +176,38 @@ Checklist manuale:
    Provare Alt+F4 sul cerchio, seconda istanza, main ripristinato durante una
    riduzione lenta e ripetizione della minimizzazione. Nessuna finestra duplicata
    o processo invisibile irrecuperabile.
+
+## JSON E2E persistente dopo un FAIL
+
+Una fixture Playwright scrive sul filesystem nel teardown di un test fallito,
+anche se il launch fallisce prima di attraversare il `catch`. Usa
+`testInfo.outputPath('companion-v2-geometry.json')`, crea la directory, scrive
+il JSON UTF-8 e solo dopo allega **il path** al test. Reporter `list` invariato.
+
+Percorso dal repository:
+`apps/desktop/test-results/<directory-test-companion>/companion-v2-geometry.json`.
+Playwright può creare anche una copia sotto `attachments/`. Recuperare il file
+**prima di rieseguire Playwright**, che pulisce il proprio output a inizio run.
+Nessun codice aggiunto cancella screenshot o altri file del proprietario.
+
+```powershell
+Get-ChildItem .\apps\desktop\test-results -Recurse -File -Filter companion-v2-geometry.json |
+  Select-Object FullName, Length
+Get-ChildItem .\apps\desktop\test-results -Recurse -File -Filter companion-v2-geometry.json |
+  ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
+```
+
+Un file `[]` significa che il processo non ha consentito alcuna misura, ad
+esempio per un errore di launch; non è un PASS geometrico. I fallimenti dopo
+l'apertura conservano i campioni delle fasi e l'ultima raccolta disponibile.
+Si raccolgono solo geometria e dati tecnici fissi: nessun testo chat, input,
+credenziale, token, URL, errore grezzo o screenshot del desktop.
+
+Regressione ripetibile del salvataggio, senza Electron, browser, login o rete
+esterna: `npm.cmd test` esegue anche un subprocess Playwright sintetico,
+con reporter list e un'asserzione volutamente fallita. Il test unitario passa
+solo se il subprocess fallisce e lascia il JSON corretto in una directory
+temporanea dedicata (ripulita dal test), senza alterare i risultati E2E locali.
 
 ## Diagnostica facoltativa con mouse fisico
 

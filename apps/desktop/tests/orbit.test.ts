@@ -126,3 +126,14 @@ it('closes on later unsafe native changes and refuses impossible measured bounds
   expect(oversized.reveal).not.toHaveBeenCalled();
   expect(impossible.quit).not.toHaveBeenCalled();
 });
+
+it('fits the observed 72x73 Windows bounds at edges and corners using the full measured height', () => {
+  const area = { x: -853, y: -100, width: 853, height: 573 };
+  for (const x of [area.x, area.x + 300, area.x + area.width - 120]) for (const y of [area.y, area.y + 200, area.y + area.height - 120]) {
+    const core = { x, y, width: 120, height: 120 };
+    const placement = orbitPlacement(core, [area], { open: { width: 72, height: 73 }, exit: { width: 72, height: 73 } });
+    expect(placement).toBeDefined();
+    expect(orbitFits(core, [area], placement!)).toBe(true);
+    for (const box of Object.values(placement!)) expect(box).toMatchObject({ width: 72, height: 73 });
+  }
+});

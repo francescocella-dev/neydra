@@ -1,15 +1,16 @@
-import { _electron as electron, expect, test } from '@playwright/test';
+import { _electron as electron, expect } from '@playwright/test';
 import { resolve } from 'node:path';
-import { companionGeometry } from './helpers/companion-geometry';
+import { companionGeometry, satelliteGeometryProblems, satelliteShape } from './helpers/companion-geometry';
+import { test } from './helpers/companion-test';
+import type { ElectronApplication } from '@playwright/test';
 
 const ORBIT = 'app://orbit/index.html';
 
-test('companion lifecycle V2: minimize, stable geometry, orbital menu and session continuity', async () => {
+test('companion lifecycle V2: minimize, stable geometry, orbital menu and session continuity', async ({ geometry }) => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => key !== 'ELECTRON_RUN_AS_NODE' && value !== undefined)) as Record<string, string>;
-  const desktop = await electron.launch({ args: [resolve('.')], env, chromiumSandbox: true });
-  let exited = false;
-  const geometry: unknown[] = [];
+  let launched: ElectronApplication | undefined, exited = false;
   try {
+    const desktop = launched = await electron.launch({ args: [resolve('.')], env, chromiumSandbox: true });
     const main = await desktop.firstWindow();
     const prompt = main.getByLabel('Messaggio per ChatGPT (massimo 2000 caratteri)');
     await prompt.fill('Bozza sintetica locale, nessun invio');
@@ -46,20 +47,10 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
       geometry.push({ phase, ...snapshot });
       expect(native.bounds).toMatchObject({ width: 120, height: 120 }); expect(native.content).toMatchObject({ width: 120, height: 120 });
       expect(renderer).toMatchObject({ width: 112, height: 112, x: 4, y: 4, radius: '50%', transform: 'none', appearance: 'none' });
-      const visible = native.satellites.filter(window => window.visible);
-      const disjoint = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>
-        a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
-      for (const satellite of visible) {
-        expect(satellite.bounds).toMatchObject({ width: 72, height: 72 });
-        expect(satellite.content).toMatchObject({ width: 72, height: 72 });
-        const box = satellite.bounds;
-        expect(native.areas.some(area => box.x >= area.x && box.y >= area.y && box.x + box.width <= area.x + area.width && box.y + box.height <= area.y + area.height)).toBe(true);
-        expect(disjoint(box, native.bounds!)).toBe(true);
-      }
-      if (visible.length === 2) expect(disjoint(visible[0]!.bounds, visible[1]!.bounds)).toBe(true);
-      if (visible.length) for (const satellite of snapshot.satellites) {
-        expect(satellite).toMatchObject({ present: true, width: 48, height: 48, x: 12, y: 12, radius: '50%', viewport: { width: 72, height: 72 } });
-      }
+      const box = native.bounds!;
+      expect(native.areas.some(area => box.x >= area.x && box.y >= area.y && box.x + box.width <= area.x + area.width && box.y + box.height <= area.y + area.height)).toBe(true);
+      expect(satelliteGeometryProblems(snapshot)).toEqual([]);
+      return satelliteShape(snapshot);
     };
     await expect(core.getByRole('button', { name: 'Apri NEYDRA', exact: true })).toBeVisible();
     expect(await core.evaluate(() => ({ mainBridge: typeof window.neydra, orbitBridge: typeof window.neydraOrbit,
@@ -111,16 +102,19 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
         return { open: named.find(entry => entry.role.ok && entry.role.role === 'open')!.page,
           exit: named.find(entry => entry.role.ok && entry.role.role === 'exit')!.page };
       };
-      let menu = await orbital(); await stable('menu-open');
+      let menu = await orbital(); const menuShape = await stable('menu-open'); expect(menuShape).toHaveLength(2);
       await menu.exit.getByRole('menuitem', { name: 'Esci', exact: true }).hover();
       expect((await state()).mainVisible).toBe(false); // Hover never quits or opens.
+      expect(await stable('menu-hover')).toEqual(menuShape);
       for (const page of [menu.open, menu.exit]) {
         expect(await page.evaluate(() => ({ chat: typeof window.neydra, core: typeof window.neydraCompanion, keys: Object.keys(window.neydraOrbit).sort() })))
           .toEqual({ chat: 'undefined', core: 'undefined', keys: ['activate', 'dismiss', 'getRole', 'navigate', 'onVisibility', 'ready'] });
       }
       await core.getByRole('button').click({ button: 'right' }); await expect.poll(state).toMatchObject({ orbitVisible: 0 }); await stable('menu-toggle-close');
       menu = await orbital(true); await expect(menu.open.getByRole('menuitem')).toBeFocused();
+      const keyboardShape = await stable('menu-keyboard-open'); expect(keyboardShape).toHaveLength(2);
       await menu.open.keyboard.press('Tab'); await expect(menu.exit.getByRole('menuitem')).toBeFocused();
+      expect(await stable('menu-keyboard-next')).toEqual(keyboardShape);
       await menu.exit.keyboard.press('Escape'); await expect.poll(state).toMatchObject({ orbitVisible: 0 }); await stable('escape-close');
       menu = await orbital(); await menu.open.getByRole('menuitem').click(); await restored();
       await reduce();
@@ -138,9 +132,8 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
       await closed; exited = true;
     } finally { if (!exited) { await probe.evaluate(p => p.dispose()).catch(() => {}); await probe.dispose(); } }
   } catch (error) {
-    const failure = await companionGeometry(desktop).catch(() => undefined);
+    const failure = launched && await companionGeometry(launched).catch(() => undefined);
     if (failure) geometry.push({ phase: 'failure', ...failure });
-    await test.info().attach('companion-v2-geometry', { body: JSON.stringify(geometry, null, 2), contentType: 'application/json' });
     throw error;
-  } finally { if (!exited) await desktop.close(); }
+  } finally { if (!exited) await launched?.close(); }
 });

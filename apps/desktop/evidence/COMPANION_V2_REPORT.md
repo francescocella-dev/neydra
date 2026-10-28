@@ -1,6 +1,7 @@
 # Companion V2 — report di verifica
 
-> Follow-up corrente: [satelliti nativi da 72 DIP e controlli sui bounds reali](#follow-up-windows-dimensioni-native-dei-satelliti).
+> Follow-up corrente: [geometria DPI e JSON persistente](#follow-up-windows-dpi-e-json-persistente).
+> La precedente sezione 72 DIP conserva il report storico e le asserzioni poi corrette.
 > Gli esiti delle sezioni iniziali descrivono il candidato V2 originale.
 
 28 ottobre 2026. Branch `feat/desktop-mini-interface`, PR #10 **DRAFT**.
@@ -213,3 +214,123 @@ Verificare a 100/125/150%, angoli/bordi/taskbar e monitor negativi che contenito
 Conservare l'allegato geometrico se nativo/contenuto/DPR divergono, senza cambiare
 l'atteso. Per il mouse fisico è disponibile la [diagnostica opt-in](../../../docs/NEYDRA_MINI_COMPANION_V2.md#diagnostica-facoltativa-con-mouse-fisico).
 **Nuovo E2E Windows da eseguire dal proprietario; PR #10 sempre DRAFT.**
+
+
+## Follow-up Windows: DPI e JSON persistente
+
+Baseline richiesta `c965021b6cd0bb87c3debcb21ca6ab6c47bfbca6`.
+Il proprietario ha verificato **128/128 unit, check/lint/typecheck/build, tre
+preload ed E2E immersivo PASS**; companion FAIL, satellite **72×73 nativi** con
+richiesta 72×72. Non erano disponibili JSON autonomi sotto test-results.
+
+### Diagnosi e confini della correzione
+
+La premessa errata era richiedere nell'E2E identità fra richiesta, `getBounds`,
+`getContentBounds` e viewport renderer. La misura Windows dimostra la divergenza
+nativa; non dimostra se provenga da arrotondamento frameless, conversione DPI o
+altro. La issue storica Electron non certifica la causa nella versione 45.1.0.
+Mancano ancora le misure Windows di contenuto, scala e DPR: nuova diagnosi
+interna OS sospesa fino al JSON del proprietario.
+
+**Nessuna modifica al codice applicativo.** Constructor/min/max restano 72×72,
+core 120, controlli 48, CSS con centratura percentuale e controller che misura
+separatamente ogni satellite. Questi ultimi già gestiscono rettangoli non
+quadrati, work area e collisioni reali. Aggiunta regressione per l'esatto caso
+72×73 ai bordi/angoli su area con coordinate negative.
+
+L'E2E non sostituisce l'atteso con 73 o una tolleranza. Le proprietà garantite
+sono verificate così:
+
+| Proprietà | Verifica |
+| --- | --- |
+| Richiesta satellite 72×72 e vincoli fissi | test host esistente esatto; costante invariata |
+| Core nativo/contenuto 120×120, corpo 112×112 | asserzioni esatte conservate |
+| Satellite visibile | 48×48 CSS, raggio 50%, centro esatto nel viewport misurato |
+| Animazione a riposo | conclusione effettiva; transform none o matrice identità esatta |
+| Contenuto e bordi | contenuto dentro i bounds, bounds reali dentro work area, nessuna collisione fra finestre/core |
+| Click/focus | abilitato, opacity 1, hit test centro, outline non tagliato; attivazioni e tastiera preesistenti |
+| Stabilità | uguaglianza esatta di native/content bounds, scala, viewport/DPR e rect CSS durante hover/Tab |
+
+Min/max nativi sono diagnostica e non equivalgono a constructor options garantite:
+anche i getter possono subire la conversione dell'OS. Bounds/content DIP e
+viewport CSS sono misure distinte: non si impone un'identità fra spazi di misura.
+Nessun aumento delle dimensioni, epsilon, timeout, clipping o resize forzato.
+
+### Persistenza diagnostica verificata
+
+Il precedente attachment con body in memoria non garantiva un file autonomo con
+reporter list. Il nuovo helper scrive esplicitamente
+`testInfo.outputPath('companion-v2-geometry.json')` con mkdir/writeFile e allega
+poi il path. Nel tentativo cloud il fallimento del launch ha mostrato che anche
+un `catch` esterno può essere bypassato dal runner: il salvataggio è quindi nel
+**teardown di una fixture**, attiva prima del launch, per ogni esito inatteso.
+Il catch conserva soltanto il tentativo di campionamento finale.
+
+Un vero subprocess Playwright senza Electron, reporter list, fallisce con
+un'asserzione sintetica 73≠72 usando la **stessa fixture**. Il test unitario verifica
+exit 1, file rimasto sul disco e JSON esatto. Una seconda regressione verifica
+scrittura prima dell'attach e conservazione del file se l'attach fallisce.
+Le directory temporanee appartengono a questi test e vengono ripulite; nessun
+file del proprietario viene toccato.
+
+**Verifica osservata anche nell'E2E cloud bloccato**: dopo FAIL esistono davvero
+`apps/desktop/test-results/companion.e2e.ts-companion-6323a-menu-and-session-continuity/companion-v2-geometry.json`
+e la copia sotto `attachments/`. Contenuto `[]`, coerente con nessuna finestra
+aperta. Il JSON non dimostra geometria Windows: dimostra persistenza post-FAIL.
+
+La raccolta associa native e renderer tramite ID numerici e aggiunge richiesta,
+vincoli effettivi, zoom/resizable e work area/scala per display. Su Windows la
+conversione `screen.dipToScreenRect` è etichettata `physicalBounds`: non è una
+misura indipendente HWND. Restano bounds/content, viewport/DPR, rettangoli/stili
+e runtime. Nessun testo chat, input, dato account, token, URL, errore grezzo o
+screenshot desktop nel JSON.
+
+### Risultati effettivi
+
+- check, lint (zero warning), typecheck: **PASS**.
+- unit/renderer/diagnostica: **135/135 PASS**, 15 file, zero skip.
+- build main/tre renderer e verifica strutturale **tre preload PASS** (VM mock,
+  non prova runtime sandbox Windows).
+- Electron E2E: **entrambi BLOCKED prima della prima finestra**, exit 1,
+  `setuid_sandbox_host.cc:172`, SUID Linux non configurato / SIGTRAP.
+  Nessun --no-sandbox, chmod, elevazione o protezione ridotta.
+- JSON persistente post-FAIL: **PASS** con reporter list, test sintetico e
+  percorso reale del companion bloccato; nessuna misura GUI inventata.
+- Nuovo E2E Windows, resa fisica, DPI e multi-monitor: **NON ESEGUITI qui**.
+
+Minimizzazione, F11, menu/tastiera/drag/Escape/recupero/continuità restano testati
+nei percorsi precedenti, non sostituiti. Diff applicativo/preload/IPC/CSP/renderer,
+E2E immersivo e assertSingleViewport vuoto. Nessun OAuth/Responses/consenso, asset
+Mini/Blender/Holo/voce, dipendenza, login o richiesta AI modificati; niente merge
+o release. PR #10 sempre **DRAFT**.
+
+### Procedura Windows e recupero JSON
+
+Chiudere altre istanze NEYDRA. Conservare i risultati precedenti prima di un nuovo
+run (Playwright pulisce il suo output), senza usare git clean/reset sui file locali.
+Fermarsi al primo errore nei controlli, poi raccogliere la diagnostica se E2E fallisce:
+
+```powershell
+cd D:\WORK\NEYDRA
+git status --short
+git switch feat/desktop-mini-interface
+git pull --ff-only origin feat/desktop-mini-interface
+git rev-parse HEAD
+npm.cmd run check
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
+npm.cmd run check:preload
+npm.cmd run test:desktop
+Get-ChildItem .\apps\desktop\test-results -Recurse -File -Filter companion-v2-geometry.json |
+  Select-Object FullName, Length
+Get-ChildItem .\apps\desktop\test-results -Recurse -File -Filter companion-v2-geometry.json |
+  ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
+```
+
+Per isolare companion: `npm.cmd run test:desktop -- --grep "companion lifecycle V2"`.
+Ripetere a Windows 100%, 125%, 150%, bordi/taskbar e monitor diversi/negativi;
+confrontare richiesta, bounds/content, viewport, scala/DPR, stabilità e controlli
+cliccabili. Se fallisce conservare il JSON prima di ripetere, insieme a SHA ed
+esiti osservati. La causa OS resta da stabilire dalle misure. Nessun login o invio AI.
