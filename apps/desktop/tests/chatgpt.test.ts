@@ -276,3 +276,89 @@ it('catalogue denial or zero authorized models prevents inference and connection
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   }
 });
+
+
+describe('sanitized OAuth phase diagnostics after browser callback (offline fixtures only)', () => {
+  it('reports rejected token exchange without exposing server details or credentials', async () => {
+    const { adapter, fetchImpl } = fixtureAdapter();
+    fetchImpl.mockResolvedValueOnce(Response.json({
+      error: { code: 'invalid_grant', message: 'private-server-token-value' },
+    }, { status: 400 }));
+    await expect(adapter.connect(new AbortController().signal)).rejects.toThrow('invalid_grant');
+    expect(adapter.state()).toEqual({
+      state: 'disconnected', models: [],
+      diagnostic: { phase: 'token-exchange', code: 'invalid_grant', httpStatus: 400 },
+    });
+    const published = JSON.stringify(adapter.state());
+    for (const secret of ['private-server-token-value', 'synthetic-oauth', 'synthetic-subject', 'fixture-client'])
+      expect(published).not.toContain(secret);
+  });
+
+  it('distinguishes identity-verification errors after successful code exchange', async () => {
+    const { adapter, fetchImpl } = fixtureAdapter();
+    const original = fetchImpl.getMockImplementation()!;
+    fetchImpl.mockImplementation(async (url, options) =>
+      url === JWKS ? Response.json({ keys: [] }) : original(url, options));
+    await expect(adapter.connect(new AbortController().signal)).rejects.toThrow('identity_verification_failed');
+    expect(adapter.state().diagnostic).toEqual({
+      phase: 'token-exchange', code: 'identity_verification_failed',
+    });
+  });
+
+  it('distinguishes model-catalog refusal after a verified identity', async () => {
+    const { adapter, fetchImpl } = fixtureAdapter();
+    const original = fetchImpl.getMockImplementation()!;
+    fetchImpl.mockImplementation(async (url, options) =>
+      url === `${RESOURCE}/models`
+        ? Response.json({ error: { code: 'subscription_sharing_user_not_eligible', message: 'private-detail' } }, { status: 403 })
+        : original(url, options));
+    await expect(adapter.connect(new AbortController().signal)).rejects.toThrow();
+    expect(adapter.state().diagnostic).toEqual({
+      phase: 'model-catalog', code: 'http_rejected', httpStatus: 403,
+    });
+    expect(JSON.stringify(adapter.state())).not.toContain('private-detail');
+  });
+
+  it('reports empty authorized model catalogue and clears errors on successful sign-in', async () => {
+    const { adapter, fetchImpl } = fixtureAdapter();
+    const original = fetchImpl.getMockImplementation()!;
+    fetchImpl.mockImplementationOnce(async (url, options) => original(url, options));
+    // Once a valid token and identity are obtained, a zero-model result is not connected.
+    fetchImpl.mockImplementation(async (url, options) =>
+      url === `${RESOURCE}/models` ? Response.json({ models: [] }) : original(url, options));
+    await expect(adapter.connect(new AbortController().signal)).rejects.toThrow('no_authorized_models');
+    expect(adapter.state().diagnostic).toEqual({
+      phase: 'model-catalog', code: 'no_authorized_models',
+    });
+    fetchImpl.mockImplementation(original);
+    await adapter.connect(new AbortController().signal);
+    expect(adapter.state().state).toBe('connected');
+    expect(adapter.state().diagnostic).toBeUndefined();
+    adapter.disconnect();
+    expect(adapter.state().diagnostic).toBeUndefined();
+  });
+
+  it('does not forward arbitrary Error.message, including local disk failures', async () => {
+    const { adapter, store, open } = fixtureAdapter();
+    store.load = vi.fn(async () => { throw new Error('private disk path or contents'); });
+    await expect(adapter.connect(new AbortController().signal)).rejects.toThrow();
+    expect(adapter.state()).toEqual({
+      state: 'disconnected', models: [],
+      diagnostic: { phase: 'registration-load', code: 'local_error' },
+    });
+    expect(JSON.stringify(adapter.state())).not.toContain('private disk path');
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('keeps existing offline IPC shape valid with optional fixed diagnostic', async () => {
+    const { connectionSchema } = await import('../src/shared/contracts');
+    expect(connectionSchema.safeParse({
+      state: 'disconnected', models: [],
+      diagnostic: { phase: 'token-exchange', code: 'http_rejected', httpStatus: 401 },
+    }).success).toBe(true);
+    expect(connectionSchema.safeParse({
+      state: 'disconnected', models: [],
+      diagnostic: { phase: 'token-exchange', code: 'private raw error', token: 'secret' },
+    }).success).toBe(false);
+  });
+});
