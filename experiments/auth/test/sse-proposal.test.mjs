@@ -123,17 +123,23 @@ test('proposal refuses an explicit, empty or malformed MIME, non-200, or absent 
   }
 });
 
-test('production path still blocks missing MIME even for a valid simulated SSE; exactly one request', async () => {
+test('runtime validates a complete missing-MIME SSE response independently of offline proposal; one request', async () => {
   const response = fixture(valid);
   let calls = 0;
-  await assert.rejects(textRequest('fixture-oauth', 'fixture-model', async (url, options) => {
+  const result = await textRequest('fixture-oauth', 'fixture-model', async (url, options) => {
     calls++;
     assert.equal(url, 'https://api.openai.com/v1/responses');
     const body = JSON.parse(options.body);
     assert.equal(body.store, false); assert.equal(body.stream, true);
     assert.equal(options.redirect, 'error');
     return response;
-  }), /expected_event_stream/);
-  assert.equal(calls, 1);
-  assert.equal(response.bodyUsed, false);
+  });
+  assert.equal(calls, 1, 'only one mocked HTTP request');
+  assert.equal(response.bodyUsed, true, 'validated existing stream was read once');
+  assert.deepEqual(result, {
+    completed: true,
+    expectedText: false, // Fixture says "test è", not the fixed NEYDRA_AUTH_OK string.
+    httpStatus: 200, contentTypeCategory: 'missing', hasBodyStream: true,
+    requestId: null, missingMimeStreamValidated: true,
+  });
 });
