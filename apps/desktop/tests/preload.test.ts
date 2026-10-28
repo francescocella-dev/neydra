@@ -23,7 +23,7 @@ beforeEach(() => {
 
 it('exposes only the named narrow frozen API, without raw IPC', () => {
   expect(exposedName).toBe('neydra');
-  expect(Object.keys(bridge).sort()).toEqual(['cancel', 'getStatus', 'onEvent', 'startOfflineDemo']);
+  expect(Object.keys(bridge).sort()).toEqual(['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'onEvent', 'resetChat', 'startChatGPT', 'startOfflineDemo']);
   expect(Object.isFrozen(bridge)).toBe(true);
 });
 
@@ -55,4 +55,18 @@ it('validates events and removes exactly its own wrapped listener', () => {
   expect(listener).toHaveBeenCalledWith(event);
   off();
   expect(electron.removeListener).toHaveBeenCalledWith(CHANNELS.event, handler);
+});
+
+it('validates connection and real-request DTOs; OAuth URLs, credentials and headers never cross the bridge', async () => {
+  const requestId = '92cf0535-d871-4fde-a953-c9bf91a7a7fa';
+  expect(await bridge.startChatGPT({ requestId, prompt: 'fixture', model: 'visible', consent: 'wrong' } as never)).toMatchObject({ code: 'invalid-request' });
+  expect(await bridge.connectChatGPT({ consent: 'system-browser', url: 'https://example.org' } as never)).toMatchObject({ code: 'invalid-request' });
+  expect(electron.invoke).not.toHaveBeenCalled();
+  electron.invoke.mockResolvedValueOnce({ ok: true, connection: { state: 'connected', models: [{ slug: 'visible', name: 'Visible' }] } });
+  expect((await bridge.getConnection()).models[0]?.slug).toBe('visible');
+  electron.invoke.mockResolvedValueOnce({ ok: true, connection: { state: 'connected', models: [], accessToken: 'synthetic' } });
+  await expect(bridge.getConnection()).rejects.toThrow();
+  electron.invoke.mockResolvedValueOnce({ ok: true });
+  expect(await bridge.startChatGPT({ requestId, prompt: 'fixture', model: 'visible', consent: 'included-plan-checked' })).toEqual({ ok: true });
+  expect(electron.invoke).toHaveBeenLastCalledWith(CHANNELS.invoke, { type: 'startChatGPT', input: { requestId, prompt: 'fixture', model: 'visible', consent: 'included-plan-checked' } });
 });

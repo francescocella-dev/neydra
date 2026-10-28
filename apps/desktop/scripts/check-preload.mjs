@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 // Structural smoke of the actual CJS artifact, not an Electron sandbox/GUI test.
 let exposed;
-const status = { protocolVersion: 1, mode: 'offline', auth: 'not-integrated', provider: 'offline-demo', avatar: 'not-integrated', voice: 'not-integrated' };
+const status = { protocolVersion: 2, mode: 'offline', auth: 'available-in-main', provider: 'offline-demo', avatar: 'not-integrated', voice: 'not-integrated' };
 const source = await readFile('dist/preload/index.cjs', 'utf8');
 runInNewContext(source, {
   require(name) {
@@ -15,7 +15,7 @@ runInNewContext(source, {
     };
   },
 });
-assert.deepEqual(Object.keys(exposed).sort(), ['cancel', 'getStatus', 'onEvent', 'startOfflineDemo']);
+assert.deepEqual(Object.keys(exposed).sort(), ['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'onEvent', 'resetChat', 'startChatGPT', 'startOfflineDemo']);
 assert.equal((await exposed.getStatus()).mode, 'offline');
 assert.equal((await exposed.startOfflineDemo({ requestId: 'invalid', prompt: 'test' })).ok, false);
 console.log('Bundled preload structure: PASS (VM with mocked Electron; not a runtime sandbox test)');

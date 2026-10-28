@@ -1,3 +1,5 @@
+> Il candidato successivo con ChatGPT opzionale è documentato in [DESKTOP_CHATGPT.md](DESKTOP_CHATGPT.md). Questo documento conserva i confini e la verifica storica della shell offline #8.
+
 # Struttura desktop Windows — Issue #4
 
 Scheletro tecnico offline, avviabile con Electron + React + TypeScript + Vite.

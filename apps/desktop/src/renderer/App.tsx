@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
 import type { AvatarId, DesktopStatus } from '../shared/contracts';
+import { ChatPanel } from './ChatPanel';
 import { demoReducer, initialState } from './model';
 
 export function App() {
@@ -61,17 +62,17 @@ export function App() {
   }
 
   return <div className="shell">
-    <header><div><span className="eyebrow">DESKTOP WINDOWS · PRE-ALPHA</span><h1>NEYDRA</h1></div><span className="badge">OFFLINE · scheletro tecnico</span></header>
+    <header><div><span className="eyebrow">DESKTOP WINDOWS · PRE-ALPHA</span><h1>NEYDRA</h1></div><span className="badge">PRE-ALPHA · verifica Windows richiesta</span></header>
     <main>
       <aside aria-label="Stato integrazioni">
         <h2>Connessioni</h2>
         <dl>
-          <dt>ChatGPT Plus</dt><dd>Non integrato · PR #6</dd>
+          <dt>ChatGPT Plus</dt><dd>Modalità opzionale · vedi pannello</dd>
           <dt>Motore 3D</dt><dd>Non integrato · PR #7</dd>
           <dt>Voce locale</dt><dd>Non integrata</dd>
           <dt>Microfono</dt><dd>Disattivato · nessun accesso</dd>
         </dl>
-        <p>Nessuna connessione di rete, credenziale o conversazione salvata.</p>
+        <p>Demo offline separata. La connessione ChatGPT richiede un’azione esplicita.</p>
       </aside>
       <section className="workspace" aria-label="Area tecnica">
         <div className="stage">
@@ -99,8 +100,9 @@ export function App() {
             </div>
           </form>
         </section>
+        <ChatPanel />
       </section>
     </main>
-    <footer>Protocollo IPC v1 · Autenticazione, inferenza, 3D e audio reali non attivi.</footer>
+    <footer>Protocollo IPC v2 · ChatGPT sperimentale da convalidare su Windows. 3D e audio non integrati.</footer>
   </div>;
 }
