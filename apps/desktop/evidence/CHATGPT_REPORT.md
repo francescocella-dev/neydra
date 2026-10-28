@@ -229,3 +229,46 @@ eseguita per realizzare questi cambiamenti.
 Non rivendicare che l'autenticazione reale sia risolta.
 Non cancellare file di registrazione dell'utente, cronologie di
 lavoro Mini, né procedere con retry nascosti. La PR resta draft.
+
+## Diagnostica definitiva del modello: catalogo oltre 256 KiB (28 ottobre 2026)
+
+Dopo i **75/75 test Windows** e **1/1 E2E**, il proprietario
+ha eseguito un solo nuovo login browser: è comparso
+`Connessione interrotta: fase model-catalog, codice oversized_json`.
+Questo esito implica che `ChatGPTAdapter.connect()` ha superato
+callback, scambio token, verifica ID/scope e salvataggio subject,
+ed è entrato nella lettura del catalogo account autorizzato.
+
+**Causa confermata dal codice:** `models()` richiamava
+`boundedJson(response)` con tetto **262144 byte** (256 KiB)
+usato anche dal controllo OAuth/JWKS, troppo basso per
+il catalogo reale. Il modello non veniva scelto automaticamente,
+non veniva inviata alcuna richiesta a `/responses` e
+`session` restava volutamente non pubblicata finché il
+catalogo non era convalidato.
+
+**Modifica di portata ristretta (ancora non testata su Windows):**
+- Solo `GET https://api.openai.com/v1/models` ora usa
+  `boundedJson(response, 8 * 1024 * 1024)`, sempre con
+  parsing UTF-8 rigoroso e lettura a byte limitati; JSON
+  oltre 8 MiB resta respinto senza retry o stampa del body.
+- Token exchange, JWKS ed error bodies mantengono
+  **262144 byte**, e SSE rimane rigorosamente limitato.
+- Valida ancora `models` array max **512** elementi,
+  e passa alla UI soltanto `visibility:list`,
+  `slug` con caratteri ammessi e `display_name`
+  limitato; nessun dato di catalogo grezzo è persistito.
+- Test offline aggiunti per JSON catalogo di ~550 KiB,
+  limite 8 MiB, array di 513 elementi e limite
+  control-plane OAuth invariato.
+
+Nessuna chiamata OAuth, catalogo reale o inferenza è
+stata eseguita durante questa correzione. **Il nuovo
+tetto di 8 MiB è una soglia conservativa scelta nel client,
+non una dimensione garantita dalla documentazione OpenAI.**
+Il prossimo gate rimane Windows offline
+(`check`, `lint`, `typecheck`, `test`, `build`,
+`check:preload`, `test:desktop`), poi eventualmente
+un nuovo solo login su autorizzazione esplicita.
+Non cancellare registrazione locale, non toccare Mini/3D,
+non ripetere inferenza, e lasciare la PR DRAFT.
