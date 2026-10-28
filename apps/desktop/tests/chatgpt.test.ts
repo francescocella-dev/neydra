@@ -316,7 +316,7 @@ describe('sanitized OAuth phase diagnostics after browser callback (offline fixt
         : original(url, options));
     await expect(adapter.connect(new AbortController().signal)).rejects.toThrow();
     expect(adapter.state().diagnostic).toEqual({
-      phase: 'model-catalog', code: 'http_rejected', httpStatus: 403,
+      phase: 'model-catalog', code: 'subscription_sharing_user_not_eligible', httpStatus: 403,
     });
     expect(JSON.stringify(adapter.state())).not.toContain('private-detail');
   });
