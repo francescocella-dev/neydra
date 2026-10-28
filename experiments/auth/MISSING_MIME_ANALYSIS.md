@@ -1,5 +1,16 @@
 # HTTP 200 senza Content-Type — analisi e proposta solo offline
 
+> **Aggiornamento del 28 ottobre 2026:** questo documento descrive lo stato
+> **storico precedente** alla correzione runtime. Successivamente il proprietario
+> ha autorizzato ed eseguito una terza prova reale con `gpt-5.6-luna`.
+> Risultato: `completed:true`, `expectedText:true`,
+> `missingMimeStreamValidated:true`, HTTP 200. La capacità di inferenza
+> **diretta** è stata verificata nel probe; billing automatico, Codex/Electron
+> e prodotto completo rimangono `UNVERIFIED`. Vedi [FINDINGS.md](FINDINGS.md).
+> La risposta della **seconda** prova non è stata acquisita e la sua causa
+> resta non identificabile; questa successiva riuscita non ricostruisce
+> retroattivamente il contenuto della risposta precedente.
+
 Stato: **inferenza reale BLOCKED; integrazione complessiva UNVERIFIED**.
 Le due prove live autorizzate sono concluse. Nessun nuovo tentativo, OAuth o
 richiesta a modelli viene proposto o eseguito in questo lavoro.
