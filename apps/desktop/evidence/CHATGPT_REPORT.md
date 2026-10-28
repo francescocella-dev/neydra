@@ -203,3 +203,29 @@ contro OpenAI. Procedere per fasi: prima autenticazione/catalogo
 senza invio AI, poi eventuale singola richiesta esplicitamente
 autorizzata e ricontrollo manuale di quota e addebiti.
 La PR resta draft; nessun merge o intervento su Mini/3D.
+
+## Callback browser accettato, sessione Electron non connessa (28 ottobre 2026)
+
+Il proprietario riferisce che, con la correzione URN installata e
+testata offline (69/69 + E2E 1/1), il browser ha mostrato:
+**«Autorizzazione ricevuta. Torna a NEYDRA per la verifica.»**
+Nell'app lo stato è rimasto brevemente `connecting` e poi
+`disconnected`. Nessun invio Responses eseguito. Il callback
+accettato indica il raggiungimento del listener, **non** prova
+lo scambio OAuth o la verifica dei token/scopes/modelli.
+
+Prima del follow-up `DesktopService` traduceva **tutte** le
+eccezioni di `connect()` in `unavailable`. Il renderer
+mostrava solo un generico messaggio e la causa non era accertabile.
+
+Il follow-up ha aggiunto `ConnectDiagnostic` tipizzato, allowlist
+di fasi e codici, numero HTTP opzionale validato, conservazione
+del codice solo in RAM dopo il fallimento, visualizzazione UI,
+test simulati per errori di token/identità/catalogo/registrazione
+e protezione dati sensibili. Nessuna richiesta reale è stata
+eseguita per realizzare questi cambiamenti.
+
+**Verifica Windows di questa nuova diagnostica NON ancora effettuata.**
+Non rivendicare che l'autenticazione reale sia risolta.
+Non cancellare file di registrazione dell'utente, cronologie di
+lavoro Mini, né procedere con retry nascosti. La PR resta draft.
