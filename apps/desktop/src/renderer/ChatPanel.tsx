@@ -8,7 +8,7 @@ export function ChatPanel() {
   const [model, setModel] = useState('');
   const [prompt, setPrompt] = useState('');
   const [consent, setConsent] = useState(false);
-  const [notice, setNotice] = useState('Integrazione Windows da verificare.');
+  const [notice, setNotice] = useState('ChatGPT disponibile su collegamento esplicito. Nessun invio senza consenso.');
   const [transcript, setTranscript] = useState<{ prompt: string; text: string }[]>([]);
   const [chat, dispatch] = useReducer(demoReducer, initialState);
   const lock = useRef(false);
