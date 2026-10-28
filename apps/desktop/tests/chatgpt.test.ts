@@ -17,7 +17,8 @@ function jwt(tx: Transaction, overrides = {}) {
   const data = `${head}.${body}`;
   return `${data}.${sign('RSA-SHA256', Buffer.from(data), privateKey).toString('base64url')}`;
 }
-const tx = () => transaction('http://127.0.0.1:54321/auth/callback', 'synthetic-host', 'fixture-client');
+const hostId = 'urn:uuid:92cf0535-d871-4fde-a953-c9bf91a7a7fa';
+const tx = () => transaction('http://127.0.0.1:54321/auth/callback', hostId, 'fixture-client');
 const created = { type: 'response.created', response: { id: 'resp_fixture', status: 'in_progress' } };
 const delta = { type: 'response.output_text.delta', delta: 'Ciao sintetico' };
 const completed = { type: 'response.completed', response: { id: 'resp_fixture', status: 'completed' } };
@@ -51,10 +52,18 @@ describe('OAuth safeguards with signed synthetic tokens', () => {
     const url = new URL(authorizationUrl(first));
     expect(url.origin).toBe(ISSUER);
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(url.searchParams.get('ext_agent_host_id')).toBe(hostId);
     expect(url.searchParams.has('client_secret')).toBe(false);
     expect(first.state).not.toBe(second.state);
     expect(first.nonce).not.toBe(second.nonce);
     expect(url.searchParams.get('code_challenge')).not.toBe(first.verifier);
+  });
+  it('blocks malformed host IDs before issuing an OAuth authorization URL', () => {
+    const redirect = 'http://127.0.0.1:54321/auth/callback';
+    for (const value of ['92cf0535-d871-4fde-a953-c9bf91a7a7fa', 'synthetic-host',
+      'urn:uuid:not-a-uuid', 'https://example.org/host', '', 'urn:uuid:00000000-0000-0000-0000-000000000000']) {
+      expect(() => transaction(redirect, value)).toThrow('invalid_host_identifier');
+    }
   });
   it('accepts one callback and blocks replay, duplicates, wrong state and path', () => {
     const first = tx();
@@ -143,7 +152,7 @@ describe('Responses completion and same-response missing-MIME handling', () => {
 });
 
 function fixtureAdapter() {
-  const registration: Registration = { hostId: '92cf0535-d871-4fde-a953-c9bf91a7a7fa', clientId: null, subject: null };
+  const registration: Registration = { hostId, clientId: null, subject: null };
   const store: RegistrationStore = { load: vi.fn(async () => ({ ...registration })), save: vi.fn(async value => { Object.assign(registration, value); }) };
   let current: Transaction;
   const open = vi.fn(async (url: string) => { expect(new URL(url).origin).toBe(ISSUER); });
