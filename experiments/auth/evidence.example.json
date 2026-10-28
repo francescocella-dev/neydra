@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 2,
+  "status": "UNVERIFIED",
+  "verificationDate": null,
+  "nodeVersion": null,
+  "codexVersion": null,
+  "operatingSystem": null,
+  "officialSourcesRechecked": false,
+  "identityVerified": false,
+  "planScopeGranted": false,
+  "inferenceCompleted": false,
+  "expectedText": false,
+  "includedAllowanceCheckedBeforeAndAfter": false,
+  "appPurchasedCreditsDisabled": false,
+  "purchasedCreditBalanceZeroBeforeAndAfter": false,
+  "automaticCreditRechargeDisabled": false,
+  "noApiKeyOrPaidFallbackConfigured": false,
+  "noAdditionalChargesVerifiedByOwner": false,
+  "codexHandshakeVerified": false,
+  "codexTurnVerified": false,
+  "failure": {
+    "code": null,
+    "httpStatus": null,
+    "bodyShape": null,
+    "contentTypeCategory": null,
+    "hasBodyStream": null,
+    "requestId": null
+  }
+}

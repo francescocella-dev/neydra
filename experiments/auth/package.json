@@ -1,0 +1,13 @@
+{
+  "name": "neydra-auth-feasibility",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "check": "node check.mjs",
+    "test": "node --test --test-isolation=none test/*.test.mjs",
+    "start": "node run.mjs",
+    "codex:probe": "node codex.mjs"
+  }
+}
