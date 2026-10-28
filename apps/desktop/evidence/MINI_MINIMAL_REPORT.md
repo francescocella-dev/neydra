@@ -1,3 +1,5 @@
+> Follow-up corrente: [correzione della navigazione alla demo dopo Escape, 93 test offline](#follow-up-windows-sezione-tecnica-e-annullamento). Gli esiti iniziali sottostanti si riferiscono al redesign di partenza.
+
 # Mini — redesign minimale immersivo
 
 28 ottobre 2026. Branch esistente `feat/desktop-mini-interface`, PR #10 **DRAFT**.
@@ -97,3 +99,69 @@ sul PC Windows, senza nuove richieste AI. Provare realmente finestra/fullscreen,
 resize, menu, tastiera, controlli visibili e scala OS 100/125/150%. Verificare sia
 scroll globale assente sia contenuti completi/raggiungibili. La PR #10 resta DRAFT
 in attesa di questa convalida e della review visiva del proprietario.
+
+## Follow-up Windows: sezione tecnica e annullamento
+
+Baseline del follow-up: `6961b1092b4ca471ad34cd1f5592c1c5f6a36593`.
+Il proprietario riferisce su Windows check/lint/typecheck/build/preload e
+**92/92 unit PASS**. L'E2E arriva alla ricerca di `Demo offline annullata` dopo
+Escape e riapertura del menu, poi fallisce: non è un PASS E2E completo.
+
+**Causa:** `openMenu()` seleziona correttamente `controls`. Il risultato della
+demo è nella sezione `technical`, quindi la ricerca per ruolo non vede lo stato
+mentre la sezione è nascosta. Il fallimento precedente non provava un difetto di
+cancellazione. Questo comportamento del menu deve essere conservato.
+
+**Correzione soltanto nei test:** helper E2E `openOfflineTools()` seleziona
+«Informazioni e strumenti tecnici», ne verifica la visibilità ed espande il
+`details` della demo solo se è chiuso. È usato al primo accesso e dopo la
+riapertura; un `details` già aperto non viene accidentalmente richiuso. Il
+locator dello stato è limitato alla demo. Dopo Escape rimangono i controlli di
+chiusura menu e ritorno focus; dopo la navigazione si richiedono **stato visibile**
+e testo esatto **«Demo offline annullata»**. Nessun includeHidden, skip, cambio
+risultato o aumento timeout.
+
+Nuovo test renderer con `DesktopService` e `offlineProvider` effettivi e bridge
+locale: avvio demo, Escape/cancel, chiusura dialogo, riapertura in controls,
+conferma dello stato non accessibile finché nascosto, ritorno alla sezione
+tecnica e verifica del vero evento `responseCancelled` reso come stato atteso.
+Non viene iniettato un finto risultato di cancellazione. Solo il comportamento
+nativo del dialogo è simulato in jsdom; non è una prova GUI Windows.
+
+Esiti effettivamente osservati nel cloud per questo follow-up:
+
+| Controllo | Esito |
+| --- | --- |
+| check, lint, typecheck | PASS |
+| `npm test` | **93/93 PASS, 8 file, zero skip** |
+| build, check preload, sintassi bundle | PASS |
+| diff check e diff runtime/percorsi protetti | PASS, nessuna modifica runtime |
+| Electron E2E | BLOCKED prima della finestra, sandbox Linux |
+| Nuovo E2E Windows | NON ESEGUITO |
+
+Il tentativo `DEBUG=pw:browser npm run test:desktop` termina con lo stesso
+`FATAL:content/browser/sandbox_host_linux.cc:41 … shutdown: Operation not
+permitted (1)` / SIGTRAP. Non raggiunge l'asserzione corretta; nessun PASS GUI
+attribuito al cloud. Sandbox e sicurezza immutati. Non occorre alterare la
+cancellazione o il timing in assenza di un ulteriore fallimento osservato dopo
+aver reso visibile la sezione.
+
+Ripetizione sul PC Windows, senza login o invii AI:
+
+```powershell
+cd D:\WORK\NEYDRA
+git status --short
+git switch feat/desktop-mini-interface
+git pull --ff-only origin feat/desktop-mini-interface
+npm.cmd run check
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
+npm.cmd run check:preload
+npm.cmd run test:desktop
+```
+
+Se lo stato visibile differisce da «Demo offline annullata», conservare il testo
+osservato e la nuova asserzione per indagare cancellazione/timing, senza cambiare
+l'atteso o saltare il controllo. PR #10 sempre DRAFT; niente merge/release.

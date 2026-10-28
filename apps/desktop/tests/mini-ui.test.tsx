@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 import type { Connection, DesktopBridge, StreamEvent } from '../src/shared/contracts';
 import type { WindowState } from '../src/shared/window-contracts';
-import { desktopStatus } from '../src/main/service';
+import { offlineProvider } from '../src/main/offline';
+import { DesktopService, desktopStatus } from '../src/main/service';
 import { App } from '../src/renderer/App';
 
 beforeAll(() => {
@@ -154,4 +155,35 @@ it('renders a long streamed response and full-size input without moving controls
   const history = screen.getByLabelText('Cronologia della conversazione');
   expect(history.contains(screen.getByRole('button', { name: 'Stop risposta' }))).toBe(false);
   expect(history.contains(screen.getByRole('checkbox', { name: /Ho verificato quota/ }))).toBe(false);
+});
+
+it('reopens the technical section after Escape and verifies real offline cancellation in the visible demo', async () => {
+  const { bridge, emit } = fixture();
+  const service = new DesktopService(offlineProvider, emit);
+  vi.mocked(bridge.startOfflineDemo).mockImplementation(async input => service.handle({ type: 'startOfflineDemo', input }));
+  vi.mocked(bridge.cancel).mockImplementation(async input => service.handle({ type: 'cancel', input }));
+  const user = userEvent.setup();
+  render(<App />);
+  try {
+    let menu = await openMenu(user);
+    await user.click(menu.getByRole('button', { name: 'Informazioni e strumenti tecnici' }));
+    await user.click(menu.getByText('Banco di prova offline', { selector: 'summary' }));
+    await user.click(menu.getByRole('button', { name: 'Avvia demo offline' }));
+    const requestId = vi.mocked(bridge.startOfflineDemo).mock.calls[0]![0].requestId;
+    await user.keyboard('{Escape}');
+    // jsdom needs the native dialog cancellation event supplied explicitly.
+    fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(bridge.cancel).toHaveBeenCalledWith({ requestId });
+    menu = await openMenu(user);
+    // Menu correctly starts in controls: hidden status is not an observable result.
+    expect(menu.queryByRole('status')).toBeNull();
+    await user.click(menu.getByRole('button', { name: 'Informazioni e strumenti tecnici' }));
+    const tools = document.querySelector<HTMLDetailsElement>('.developer-tools')!;
+    if (!tools.open) await user.click(menu.getByText('Banco di prova offline', { selector: 'summary' }));
+    expect(tools.open).toBe(true);
+    await waitFor(() => expect(menu.getByRole('status').textContent).toBe('Demo offline annullata'));
+    expect(bridge.connectChatGPT).not.toHaveBeenCalled();
+    expect(bridge.startChatGPT).not.toHaveBeenCalled();
+  } finally { service.dispose(); }
 });

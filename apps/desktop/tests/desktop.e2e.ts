@@ -15,6 +15,16 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
     const settings = page.getByRole('dialog', { name: 'Pannello di controllo' });
     const openMenu = async () => { await menuButton.click(); await expect(settings).toBeVisible(); };
     const closeMenu = async () => { await settings.getByRole('button', { name: 'Chiudi menu' }).click(); await expect(settings).toBeHidden(); };
+    const openOfflineTools = async () => {
+      await settings.getByRole('button', { name: 'Informazioni e strumenti tecnici', exact: true }).click();
+      const technical = settings.getByRole('region', { name: 'Informazioni e strumenti tecnici', exact: true });
+      await expect(technical).toBeVisible();
+      const tools = technical.locator('.developer-tools');
+      // The section resets on menu open, while the native details may stay expanded.
+      if (!await tools.evaluate(element => (element as HTMLDetailsElement).open)) await tools.locator('summary').click();
+      await expect(tools.getByRole('heading', { name: 'Banco di prova offline', exact: true })).toBeVisible();
+      return tools;
+    };
     const togglePanel = async (name: string) => { await openMenu(); await settings.getByRole('button', { name, exact: true }).click(); await closeMenu(); };
     await expect(page.getByRole('heading', { name: 'NEYDRA', exact: true })).toBeVisible();
     await expect(page.locator('.brand')).toHaveText('NEYDRAMINI');
@@ -54,8 +64,8 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
     expect(await page.locator('.energy-one').evaluate(element => getComputedStyle(element).animationName)).toBe('none');
     await settings.getByRole('button', { name: 'Impostazioni', exact: true }).click();
     await expect(settings.getByText(/Voce non ancora disponibile/)).toBeVisible();
-    await settings.getByRole('button', { name: 'Informazioni e strumenti tecnici' }).click();
-    await settings.locator('.developer-tools > summary').click();
+    const offlineTools = await openOfflineTools();
+    const demoStatus = offlineTools.getByRole('status');
     await expect(page.getByRole('button', { name: 'Avvia demo offline' })).toBeEnabled();
     expect(await desktop.evaluate(({ app }) => app.commandLine.hasSwitch('no-sandbox'))).toBe(false);
     expect(await page.evaluate(() => ({ require: typeof Reflect.get(window, 'require'), process: typeof Reflect.get(window, 'process'), keys: Object.keys(window.neydra).sort() })))
@@ -65,14 +75,16 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
     const status = await page.evaluate(() => window.neydra.getStatus());
     expect(status.mode).toBe('offline'); expect(status.auth).toBe('available-in-main');
     await page.getByRole('button', { name: 'Avvia demo offline' }).click();
-    await expect(page.getByRole('status')).toHaveText('Demo offline completata');
+    await expect(demoStatus).toHaveText('Demo offline completata');
     await expect(page.getByLabel('Testo demo')).toContainText('testo è predefinito');
     await page.getByRole('button', { name: 'Avvia demo offline' }).click();
     await page.keyboard.press('Escape');
     await expect(settings).toBeHidden();
     await expect(menuButton).toBeFocused();
     await openMenu();
-    await expect(page.getByRole('status')).toHaveText('Demo offline annullata');
+    await openOfflineTools();
+    await expect(demoStatus).toBeVisible();
+    await expect(demoStatus).toHaveText('Demo offline annullata');
     await closeMenu();
     expect(await page.evaluate(async () => {
       try { await fetch('https://example.org'); return 'allowed'; } catch { return 'blocked'; }
