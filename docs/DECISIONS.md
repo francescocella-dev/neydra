@@ -14,5 +14,6 @@
 | 2026-10-27 | Meshy Free may supply 3D base meshes | Conditional on exportability and license |
 | 2026-10-27 | Parallel tasks: authorization #2, 3D stage #3; bootstrap #4 | Issues created, Codex Cloud work not launched |
 | 2026-10-27 | MIT for project-authored code | Initial proposed open-source license; 3rd-party assets separate |
+| 2026-10-28 | Holo v1 visual direction: hairless softly feminine-neutral holographic face; blue/cyan theme, virtual bottom-center emitter, shared six-state motion | Design contract recorded in `docs/HOLO_VISUAL_SPEC.md` and `design/holo.tokens.json`; actual model/UI **not implemented** |
 
 **Next status update:** owner reviews PR #1 and connects the repository to Codex Cloud, then launches scoped tasks from issues #2 and #3 when eligible. Each proven integration updates this log with the PR/test reference.

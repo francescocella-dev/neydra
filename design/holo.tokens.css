@@ -1,0 +1,39 @@
+/* GENERATED from design/holo.tokens.json — do not edit by hand.
+ * Regenerate: node design/generate-holo-css.mjs
+ * Verify:     node design/generate-holo-css.mjs --check
+ * Scoped: applying Holo does not change Mini. */
+.theme-holo,
+[data-neydra-theme="holo"] {
+  --holo-background-deep: #04101F;
+  --holo-background-mid: #0A1F36;
+  --holo-background-glow: #12365C;
+  --holo-surface: #10263D;
+  --holo-surface-raised: #163550;
+  --holo-stroke: #3C7192;
+  --holo-text: #EAF8FF;
+  --holo-text-muted: #A8CBDF;
+  --holo-primary: #75DCFF;
+  --holo-ice: #D5F6FF;
+  --holo-electric: #348DFF;
+  --holo-rim: #B8EDFF;
+  --holo-listening: #8EEFD8;
+  --holo-processing: #60B6FF;
+  --holo-speaking: #D5F6FF;
+  --holo-interrupted: #B5D9EB;
+  --holo-error: #FFAFBD;
+  --holo-focus: #91EAFF;
+  --holo-motion-materialize: 1350ms;
+  --holo-motion-dissolve: 650ms;
+  --holo-motion-gaze-shift: 210ms;
+  --holo-motion-blink-close: 105ms;
+  --holo-motion-blink-open: 145ms;
+  --holo-motion-state-transition: 240ms;
+  --holo-motion-interrupt-release: 180ms;
+  --holo-motion-status-pulse: 2400ms;
+  --holo-motion-error-signal: 450ms;
+  --holo-ease-standard: cubic-bezier(0.2, 0.75, 0.25, 1);
+  --holo-ease-apparition: cubic-bezier(0.16, 1, 0.3, 1);
+  --holo-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --holo-radius-control: 10px;
+  --holo-radius-panel: 16px;
+}

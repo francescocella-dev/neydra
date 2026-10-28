@@ -2,6 +2,8 @@
 
 Read the following **before modifying code**: `docs/PRODUCT_CHARTER.md`, `docs/DESIGN_BIBLE.md`, `docs/ARCHITECTURE.md`, `docs/WORKSTREAMS.md`, `docs/EXECUTION.md`, and `docs/DECISIONS.md`.
 
+> Holo-specific work: read [Holo visual spec](docs/HOLO_VISUAL_SPEC.md), [canonical design tokens](design/holo.tokens.json) and [parallel work boundaries](docs/HOLO_PARALLEL_WORK.md) before editing the Holo theme, shader or 3D asset. Do not conflate Holo with Mini's palette.
+
 ## Non-negotiable constraints
 - Zero new paid services. **Do not** configure billable API keys, buy credits, require a credit card, activate paid CI, purchase assets, or create hosted infrastructure.
 - Use **official documented** authentication and provider interfaces only. Do not scrape ChatGPT cookies, consumer endpoints, or internal browser traffic. Never commit tokens, secrets, conversations, or identifying user data.

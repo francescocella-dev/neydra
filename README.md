@@ -25,6 +25,9 @@ Desktop shell: [PowerShell setup, contracts and limits](docs/DESKTOP.md) · [ver
 
 - [Product charter](docs/PRODUCT_CHARTER.md)
 - [Visual / animation design bible](docs/DESIGN_BIBLE.md)
+- [Holo visual identity, palette and animation specification](docs/HOLO_VISUAL_SPEC.md)
+- [Holo parallel theme / 3D implementation handoff](docs/HOLO_PARALLEL_WORK.md)
+- [Holo machine-readable design tokens](design/holo.tokens.json)
 - [Architecture and integration boundaries](docs/ARCHITECTURE.md)
 - [Codex operating rules](AGENTS.md)
 - [Workstreams and acceptance criteria](docs/WORKSTREAMS.md)
