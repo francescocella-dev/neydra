@@ -12,11 +12,15 @@ test('real Electron bridge, security, offline stream, interruption and reload', 
     await expect(page.getByRole('button', { name: 'Avvia demo offline' })).toBeEnabled();
     expect(await desktop.evaluate(({ app }) => app.commandLine.hasSwitch('no-sandbox'))).toBe(false);
     expect(await page.evaluate(() => ({ require: typeof Reflect.get(window, 'require'), process: typeof Reflect.get(window, 'process'), keys: Object.keys(window.neydra).sort() })))
-      .toEqual({ require: 'undefined', process: 'undefined', keys: ['cancel', 'getStatus', 'onEvent', 'startOfflineDemo'] });
+      .toEqual({ require: 'undefined', process: 'undefined', keys: ['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'onEvent', 'resetChat', 'startChatGPT', 'startOfflineDemo'] });
     expect(await page.evaluate(() => window.neydra.startOfflineDemo({ requestId: 'invalid', prompt: 'test' }))).toEqual({ ok: false, code: 'invalid-request' });
     const status = await page.evaluate(() => window.neydra.getStatus());
     expect(status.mode).toBe('offline');
-    expect(status.auth).toBe('not-integrated');
+    expect(status.auth).toBe('available-in-main');
+    await expect(page.getByRole('button', { name: 'Invia a ChatGPT' })).toBeDisabled();
+    await expect(page.getByLabel('Modello autorizzato selezionato')).toHaveValue('');
+    expect(await page.evaluate(() => window.neydra.getConnection())).toEqual({ state: 'disconnected', models: [] });
+    expect(await page.evaluate(() => window.neydra.startChatGPT({ requestId: crypto.randomUUID(), prompt: 'fixture', model: 'unauthorized', consent: 'included-plan-checked' }))).toEqual({ ok: false, code: 'auth-required' });
     await page.getByRole('button', { name: 'Avvia demo offline' }).click();
     await expect(page.getByRole('status')).toHaveText('Demo offline completata');
     await expect(page.getByLabel('Testo demo')).toContainText('testo è predefinito');

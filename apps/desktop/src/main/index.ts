@@ -1,7 +1,9 @@
-import { app, BrowserWindow, ipcMain, net, protocol, session } from 'electron';
+import { app, BrowserWindow, ipcMain, net, protocol, session, shell } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { CHANNELS } from '../shared/contracts';
+import { ChatGPTAdapter } from './chatgpt/adapter';
+import { registrationStore } from './chatgpt/registration';
 import { offlineProvider } from './offline';
 import { DesktopService } from './service';
 import { APP_URL, CSP, rendererAsset, rendererPreferences, trustedSender } from './security';
@@ -32,31 +34,32 @@ async function createWindow() {
     } catch { return new Response(null, { status: 404 }); }
   });
   const current = new BrowserWindow({
-    title: 'NEYDRA — struttura offline', width: 1280, height: 860, minWidth: 720, minHeight: 600,
+    title: 'NEYDRA — desktop sperimentale', width: 1280, height: 860, minWidth: 720, minHeight: 600,
     backgroundColor: '#050B14', show: false,
     webPreferences: { ...rendererPreferences, session: isolatedSession, preload: join(__dirname, '../preload/index.cjs') },
   });
   window = current;
   current.removeMenu();
   const contents = current.webContents;
+  const adapter = new ChatGPTAdapter(registrationStore(app.getPath('userData')), url => shell.openExternal(url));
   const service = new DesktopService(offlineProvider, event => {
     if (!contents.isDestroyed()) contents.send(CHANNELS.event, event);
-  });
-  ipcMain.handle(CHANNELS.invoke, (event, payload: unknown) => {
+  }, adapter);
+  ipcMain.handle(CHANNELS.invoke, async (event, payload: unknown) => {
     if (!trustedSender(event.sender.id, contents.id, event.senderFrame?.url, event.senderFrame === contents.mainFrame)) {
       return { ok: false, code: 'untrusted-sender' };
     }
-    try { return service.handle(payload); }
+    try { return await service.handle(payload); }
     catch { return { ok: false, code: 'internal' }; }
   });
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
   contents.on('will-navigate', event => event.preventDefault());
   contents.on('will-frame-navigate', event => event.preventDefault());
   contents.on('will-attach-webview', event => event.preventDefault());
-  contents.on('render-process-gone', () => service.stop());
-  contents.on('did-start-loading', () => service.stop());
+  contents.on('render-process-gone', () => service.dispose());
+  contents.on('did-start-loading', () => service.dispose());
   current.on('closed', () => {
-    service.stop();
+    service.dispose();
     ipcMain.removeHandler(CHANNELS.invoke);
     isolatedSession.protocol.unhandle('app');
     window = undefined;

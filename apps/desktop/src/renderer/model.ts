@@ -8,8 +8,9 @@ export interface DemoState {
   outcome: string;
 }
 export const initialState: DemoState = { requestId: null, text: '', running: false, state: 'idle', outcome: 'In attesa' };
-export type DemoAction = { type: 'begin'; requestId: string } | { type: 'rejected'; requestId: string } | StreamEvent;
+export type DemoAction = { type: 'clear' } | { type: 'begin'; requestId: string } | { type: 'rejected'; requestId: string } | StreamEvent;
 export function demoReducer(state: DemoState, action: DemoAction): DemoState {
+  if (action.type === 'clear') return initialState;
   if (action.type === 'begin') return { requestId: action.requestId, text: '', running: true, state: 'processing', outcome: 'Demo offline in corso' };
   if (action.requestId !== state.requestId || !state.running) return state;
   switch (action.type) {

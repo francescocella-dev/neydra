@@ -31,3 +31,7 @@ button:disabled { opacity: .5; cursor: default; }
 :focus-visible { outline: 2px solid #a59bff; outline-offset: 3px; }
 footer { border-top: 1px solid #284055; padding-top: 16px; color: #9bb4c8; font-size: 12px; }
 @media (max-width: 900px) { .shell { padding: 20px; } main { grid-template-columns: 180px minmax(0, 1fr); gap: 20px; } .stage { padding: 20px; } header { align-items: flex-start; flex-wrap: wrap; } }
+
+.connected-chat { margin-top: 28px; border-top: 1px solid #284055; }
+.connected-chat select { display: block; width: 100%; max-width: 100%; margin: 8px 0 16px; }
+.connected-chat .caption { margin-top: 12px; }

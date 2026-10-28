@@ -1,11 +1,29 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { CHANNELS, cancelSchema, responseSchema, resultSchema, startSchema, statusSchema, streamEventSchema, type DesktopBridge } from '../shared/contracts';
+import { CHANNELS, connectionSchema, connectSchema, realSchema, cancelSchema, responseSchema, resultSchema, startSchema, statusSchema, streamEventSchema, type DesktopBridge } from '../shared/contracts';
 
 const bridge = Object.freeze<DesktopBridge>({
   async getStatus() {
     const result = responseSchema.parse(await ipcRenderer.invoke(CHANNELS.invoke, { type: 'status' }));
     if (!result.ok) throw new Error('Desktop status unavailable');
     return statusSchema.parse(result.status);
+  },
+  async getConnection() {
+    const result = responseSchema.parse(await ipcRenderer.invoke(CHANNELS.invoke, { type: 'connection' }));
+    if (!result.ok) throw new Error('Connection unavailable');
+    return connectionSchema.parse(result.connection);
+  },
+  async connectChatGPT(input) {
+    const parsed = connectSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, code: 'invalid-request' };
+    return resultSchema.parse(await ipcRenderer.invoke(CHANNELS.invoke, { type: 'connectChatGPT', input: parsed.data }));
+  },
+  async disconnectChatGPT() { return resultSchema.parse(await ipcRenderer.invoke(CHANNELS.invoke, { type: 'disconnectChatGPT' })); },
+  async cancelConnect() { return resultSchema.parse(await ipcRenderer.invoke(CHANNELS.invoke, { type: 'cancelConnect' })); },
+  async resetChat() { return resultSchema.parse(await ipcRenderer.invoke(CHANNELS.invoke, { type: 'resetChat' })); },
+  async startChatGPT(input) {
+    const parsed = realSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, code: 'invalid-request' };
+    return resultSchema.parse(await ipcRenderer.invoke(CHANNELS.invoke, { type: 'startChatGPT', input: parsed.data }));
   },
   async startOfflineDemo(input) {
     const parsed = startSchema.safeParse(input);

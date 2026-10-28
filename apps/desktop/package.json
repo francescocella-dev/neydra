@@ -9,7 +9,7 @@
     "setup:electron": "install-electron",
     "dev": "npm run build && npm start",
     "start": "electron .",
-    "check": "node --check scripts/build.mjs && node --check scripts/check-preload.mjs && node --check eslint.config.mjs",
+    "check": "node --check scripts/build.mjs && node --check scripts/check-preload.mjs && node --check eslint.config.mjs && node --check src/main/chatgpt/protocol.mjs && node --check src/main/chatgpt/loopback.mjs",
     "check:preload": "node scripts/check-preload.mjs",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",

@@ -4,9 +4,11 @@
 
 NEYDRA is a Windows-first personal AI interface planned around two original, switchable, fully 3D personalities: **Holo**, a luminous sci-fi holographic assistant, and **Mini**, a warm and expressive robot companion.
 
-> **Project status: PRE-ALPHA.** This branch adds a runnable offline desktop technical shell, not an integrated product or downloadable installer. The owner verified one ChatGPT Plus auth/inference probe in draft PR #6; draft PR #7 contains the separate 3D engine. Neither is integrated here.
+> **Project status: PRE-ALPHA.** This branch prepares an optional Sign in with ChatGPT/text adapter in the Electron main process alongside the existing offline demo. The new Windows integration is UNVERIFIED until the owner tests it in the app; no installer is provided. PR #6 proved a separate Plus probe. The 3D engine in PR #7 remains separate.
 
-Desktop Windows: [PowerShell setup, contracts and limits](docs/DESKTOP.md) · [verification](apps/desktop/evidence/REPORT.md).
+ChatGPT candidate: [PowerShell and Windows validation gate](docs/DESKTOP_CHATGPT.md) · [offline verification report](apps/desktop/evidence/CHATGPT_REPORT.md).
+
+Desktop shell: [PowerShell setup, contracts and limits](docs/DESKTOP.md) · [verification](apps/desktop/evidence/REPORT.md).
 
 ## Core commitments
 

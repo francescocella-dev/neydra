@@ -9,7 +9,7 @@ export interface AuthPort {
 }
 
 // Sanitized provider output; terminal completion requires the provider's real terminal event.
-export type ProviderChunk = { type: 'delta'; text: string } | { type: 'completed' };
+export type ProviderChunk = { type: 'delta'; text: string } | { type: 'completed'; missingMimeStreamValidated?: boolean };
 export interface ProviderPort {
   readonly mode: 'offline-demo' | 'official';
   stream(input: StartRequest, signal: AbortSignal): AsyncIterable<ProviderChunk>;
