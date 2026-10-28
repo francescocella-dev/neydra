@@ -1,7 +1,8 @@
 import { useId, type ButtonHTMLAttributes } from 'react';
 
-export type IconName = 'menu' | 'close' | 'chat' | 'status' | 'theme' | 'settings' | 'info' | 'expand' | 'collapse' | 'mic' | 'send' | 'stop' | 'connection';
+export type IconName = 'mini' | 'menu' | 'close' | 'chat' | 'status' | 'theme' | 'settings' | 'info' | 'expand' | 'collapse' | 'mic' | 'send' | 'stop' | 'connection';
 const paths: Record<IconName, string[]> = {
+  mini: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0', 'M9 16V8l6 8V8'],
   menu: ['M4 6h16M4 12h16M4 18h16'], close: ['M6 6l12 12M18 6 6 18'],
   chat: ['M4 4h16v12H9l-5 4V4'], status: ['M4 18V9M12 18V4M20 18v-6'],
   theme: ['M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4', 'M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0'],

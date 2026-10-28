@@ -77,7 +77,7 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
     await expect(page.getByRole('button', { name: 'Avvia demo offline' })).toBeEnabled();
     expect(await desktop.evaluate(({ app }) => app.commandLine.hasSwitch('no-sandbox'))).toBe(false);
     expect(await page.evaluate(() => ({ require: typeof Reflect.get(window, 'require'), process: typeof Reflect.get(window, 'process'), keys: Object.keys(window.neydra).sort() })))
-      .toEqual({ require: 'undefined', process: 'undefined', keys: ['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'getWindowState', 'onEvent', 'onWindowState', 'resetChat', 'setFullscreen', 'startChatGPT', 'startOfflineDemo'] });
+      .toEqual({ require: 'undefined', process: 'undefined', keys: ['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'getWindowState', 'onEvent', 'onWindowState', 'reduceToMini', 'resetChat', 'setFullscreen', 'startChatGPT', 'startOfflineDemo'] });
     expect(await page.evaluate(() => window.neydra.startOfflineDemo({ requestId: 'invalid', prompt: 'test' }))).toEqual({ ok: false, code: 'invalid-request' });
     expect(await page.evaluate(() => window.neydra.setFullscreen({ enabled: 'true' } as never))).toEqual({ ok: false, code: 'invalid-request' });
     const status = await page.evaluate(() => window.neydra.getStatus());

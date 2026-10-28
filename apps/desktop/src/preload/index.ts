@@ -1,8 +1,10 @@
 import { WINDOW_CHANNELS, fullscreenInputSchema, windowResultSchema, windowStateSchema } from '../shared/window-contracts';
 import { contextBridge, ipcRenderer } from 'electron';
+import { COMPANION_CHANNEL, companionResultSchema } from '../shared/companion-contracts';
 import { CHANNELS, connectionSchema, connectSchema, realSchema, cancelSchema, responseSchema, resultSchema, startSchema, statusSchema, streamEventSchema, type DesktopBridge } from '../shared/contracts';
 
 const bridge = Object.freeze<DesktopBridge>({
+  async reduceToMini() { return companionResultSchema.parse(await ipcRenderer.invoke(COMPANION_CHANNEL, { type: 'reduce' })); },
   async getWindowState() { return windowResultSchema.parse(await ipcRenderer.invoke(WINDOW_CHANNELS.invoke, { type: 'getState' })); },
   async setFullscreen(input) {
     const parsed = fullscreenInputSchema.safeParse(input);

@@ -1,5 +1,10 @@
 # NEYDRA Mini — schermata minimale immersiva
 
+> La baseline `9b8fc61` è stata approvata dal proprietario su Windows (93/93 unit,
+> Electron E2E 1/1 e design). La successiva [prima modalità companion](NEYDRA_MINI_COMPANION.md)
+> conserva questa interfaccia e ha un gate Windows separato. Le limitazioni
+> riportate sotto descrivono le verifiche iniziali del redesign.
+
 Direzione corrente della PR #10 **DRAFT**, sul branch esistente
 `feat/desktop-mini-interface`. Questa richiesta sostituisce la presentazione
 Premium Tech a dashboard; palette, font e venature approvati restano invariati.

@@ -18,6 +18,8 @@ export function App() {
   const [fullscreen, setFullscreen] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [windowNotice, setWindowNotice] = useState('');
+  const [companionPending, setCompanionPending] = useState(false);
+  const companionLock = useRef(false);
   const [prompt, setPrompt] = useState('Prova dello streaming locale');
   const [demo, dispatch] = useReducer(demoReducer, initialState);
   const activeId = useRef<string | null>(null);
@@ -52,6 +54,21 @@ export function App() {
   function openMenu(section: MenuSection = 'controls') {
     setMenuSection(section);
     setSettingsOpen(true);
+  }
+  async function reduceToMini() {
+    if (companionLock.current) return;
+    companionLock.current = true; setCompanionPending(true);
+    try {
+      const result = await window.neydra.reduceToMini();
+      if (result.ok) { setSettingsOpen(false); setWindowNotice(''); }
+      else companionFailed();
+    } catch { companionFailed(); }
+    finally { companionLock.current = false; setCompanionPending(false); }
+  }
+  function companionFailed() {
+    setSettingsOpen(false);
+    setWindowNotice('Modalità Mini non disponibile. NEYDRA resta aperta.');
+    requestAnimationFrame(() => document.getElementById('control-menu-button')?.focus());
   }
   function closeChat() {
     setChatOpen(false);
@@ -137,7 +154,7 @@ export function App() {
         </dl></div>
       </aside>
     </main>
-    <SettingsPanel open={settingsOpen} onDismiss={() => setSettingsOpen(false)} section={menuSection} onSection={setMenuSection} accountRef={setAccountTarget} chatOpen={chatOpen} onChat={() => setChatOpen(value => !value)} statusOpen={telemetryOpen} onStatus={() => setTelemetryOpen(value => !value)} fullscreen={fullscreen} onFullscreen={() => { void toggleFullscreen(); }} reducedMotion={reducedMotion} onReducedMotion={setReducedMotion}>
+    <SettingsPanel open={settingsOpen} onDismiss={() => setSettingsOpen(false)} section={menuSection} onSection={setMenuSection} accountRef={setAccountTarget} chatOpen={chatOpen} onChat={() => setChatOpen(value => !value)} statusOpen={telemetryOpen} onStatus={() => setTelemetryOpen(value => !value)} fullscreen={fullscreen} onFullscreen={() => { void toggleFullscreen(); }} onCompanion={() => { void reduceToMini(); }} companionPending={companionPending} reducedMotion={reducedMotion} onReducedMotion={setReducedMotion}>
       <details className="developer-tools"><summary>Banco di prova offline</summary>
           <section className="demo" aria-labelledby="demo-title">
             <h3 id="demo-title">Banco di prova offline</h3>

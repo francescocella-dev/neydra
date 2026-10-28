@@ -20,6 +20,7 @@ function fixture(connected = false) {
   const events = new Set<(event: StreamEvent) => void>();
   const windowEvents = new Set<(state: WindowState) => void>();
   const bridge: DesktopBridge = {
+    reduceToMini: vi.fn(async () => ({ ok: true as const })),
     getStatus: vi.fn(async () => desktopStatus), getConnection: vi.fn(async () => connection),
     connectChatGPT: vi.fn(async () => ({ ok: true as const })),
     disconnectChatGPT: vi.fn(async () => { connection = { state: 'disconnected', models: [] }; return { ok: true as const }; }),
@@ -186,4 +187,52 @@ it('reopens the technical section after Escape and verifies real offline cancell
     expect(bridge.connectChatGPT).not.toHaveBeenCalled();
     expect(bridge.startChatGPT).not.toHaveBeenCalled();
   } finally { service.dispose(); }
+});
+
+it('reduces through the menu without remounting chat or losing draft, selected model, transcript or connection', async () => {
+  const f = fixture(true); const user = userEvent.setup(); render(<App />);
+  let menu = await openMenu(user);
+  await user.click(menu.getByRole('button', { name: 'ChatGPT e modelli' }));
+  await user.selectOptions(menu.getByLabelText('Modello autorizzato selezionato'), 'fixture-model');
+  await user.click(menu.getByRole('button', { name: 'Chiudi menu' }));
+  const prompt = screen.getByLabelText('Messaggio per ChatGPT (massimo 2000 caratteri)');
+  await user.type(prompt, 'Turno sintetico precedente');
+  await user.click(screen.getByRole('checkbox', { name: /Ho verificato quota/ }));
+  await user.click(screen.getByRole('button', { name: 'Invia a ChatGPT' }));
+  const requestId = vi.mocked(f.bridge.startChatGPT).mock.calls[0]![0].requestId;
+  f.emit({ type: 'textDelta', requestId, text: 'Risposta sintetica conservata' });
+  // Reduction while a simulated stream is active must not cancel it or remove its listener.
+  const listeners = f.events.size;
+  menu = await openMenu(user); await user.click(menu.getByRole('button', { name: 'Riduci a Mini' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  f.emit({ type: 'responseCompleted', requestId });
+  await user.clear(prompt); await user.type(prompt, 'Bozza non inviata');
+  const history = document.querySelector('.chat-history');
+  menu = await openMenu(user); await user.click(menu.getByRole('button', { name: 'Riduci a Mini' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.getByLabelText('Messaggio per ChatGPT (massimo 2000 caratteri)')).toBe(prompt);
+  expect((prompt as HTMLTextAreaElement).value).toBe('Bozza non inviata');
+  expect(document.querySelector('.chat-history')).toBe(history);
+  expect(history?.textContent).toContain('Risposta sintetica conservata');
+  expect(f.events.size).toBe(listeners); expect(f.bridge.getConnection).toHaveBeenCalledOnce();
+  menu = await openMenu(user); await user.click(menu.getByRole('button', { name: 'ChatGPT e modelli' }));
+  expect((menu.getByLabelText('Modello autorizzato selezionato') as HTMLSelectElement).value).toBe('fixture-model');
+  expect(menu.getByText('Collegato')).toBeTruthy();
+  expect(f.bridge.reduceToMini).toHaveBeenCalledTimes(2);
+  expect(f.bridge.startChatGPT).toHaveBeenCalledTimes(1); // Only the explicit synthetic send above.
+  expect(f.bridge.connectChatGPT).not.toHaveBeenCalled(); expect(f.bridge.cancel).not.toHaveBeenCalled();
+});
+
+it('locks duplicate reductions and leaves the existing session/menu reachable on failure without retry', async () => {
+  const f = fixture(); const user = userEvent.setup(); render(<App />);
+  let finish!: (value: { ok: false; code: 'unavailable' }) => void;
+  vi.mocked(f.bridge.reduceToMini).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const menu = await openMenu(user), reduce = menu.getByRole('button', { name: 'Riduci a Mini' }) as HTMLButtonElement;
+  await user.click(reduce); await user.click(reduce);
+  expect(reduce.disabled).toBe(true); expect(f.bridge.reduceToMini).toHaveBeenCalledOnce();
+  await act(async () => { finish({ ok: false, code: 'unavailable' }); });
+  expect(screen.getByRole('alert').textContent).toContain('Modalità Mini non disponibile');
+  expect(screen.queryByRole('dialog')).toBeNull(); expect(reduce.disabled).toBe(false);
+  expect(f.bridge.reduceToMini).toHaveBeenCalledOnce();
+  expect(f.bridge.connectChatGPT).not.toHaveBeenCalled(); expect(f.bridge.startChatGPT).not.toHaveBeenCalled();
 });

@@ -1,4 +1,7 @@
-> Follow-up corrente: [overflow del tooltip Stato nelle finestre basse](#follow-up-windows-tooltip-del-pannello-stato). Gli esiti delle sezioni precedenti si riferiscono ai rispettivi candidati.
+> La baseline `9b8fc61` è ora approvata dal proprietario su Windows: 93/93 unit,
+> Electron E2E 1/1 e design. La successiva [prima modalità companion](COMPANION_REPORT.md)
+> attende una propria convalida Windows. Gli esiti sottostanti sono lo storico
+> delle verifiche del redesign.
 
 # Mini — redesign minimale immersivo
 

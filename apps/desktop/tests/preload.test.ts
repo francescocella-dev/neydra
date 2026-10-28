@@ -23,7 +23,7 @@ beforeEach(() => {
 
 it('exposes only the named narrow frozen API, without raw IPC', () => {
   expect(exposedName).toBe('neydra');
-  expect(Object.keys(bridge).sort()).toEqual(['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'getWindowState', 'onEvent', 'onWindowState', 'resetChat', 'setFullscreen', 'startChatGPT', 'startOfflineDemo']);
+  expect(Object.keys(bridge).sort()).toEqual(['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'getWindowState', 'onEvent', 'onWindowState', 'reduceToMini', 'resetChat', 'setFullscreen', 'startChatGPT', 'startOfflineDemo']);
   expect(Object.isFrozen(bridge)).toBe(true);
 });
 
@@ -90,4 +90,30 @@ it('validates the isolated fullscreen API and strips private event objects', asy
   expect(listener).toHaveBeenCalledWith({ fullscreen: true });
   off();
   expect(electron.removeListener).toHaveBeenCalledWith(WINDOW_CHANNELS.event, handler);
+});
+
+it('routes reduction only to the companion channel and validates the result', async () => {
+  const { COMPANION_CHANNEL } = await import('../src/shared/companion-contracts');
+  electron.invoke.mockResolvedValueOnce({ ok: true });
+  expect(await bridge.reduceToMini()).toEqual({ ok: true });
+  expect(electron.invoke).toHaveBeenLastCalledWith(COMPANION_CHANNEL, { type: 'reduce' });
+  electron.invoke.mockResolvedValueOnce({ ok: true, conversation: 'synthetic-private' });
+  await expect(bridge.reduceToMini()).rejects.toThrow();
+});
+
+it('exposes a separate minimal companion bridge; validates replies and never subscribes to chat events', async () => {
+  const { COMPANION_CHANNEL } = await import('../src/shared/companion-contracts');
+  await import('../src/preload/companion');
+  const [name, mini] = electron.exposeInMainWorld.mock.calls.at(-1)!;
+  expect(name).toBe('neydraCompanion');
+  expect(Object.isFrozen(mini)).toBe(true);
+  expect(Object.keys(mini).sort()).toEqual(['beginDrag', 'cancelDrag', 'endDrag', 'moveDrag', 'openMenu', 'ready', 'restore']);
+  for (const [method, command] of [['ready', 'ready'], ['beginDrag', 'dragStart'], ['moveDrag', 'dragMove'], ['endDrag', 'dragEnd'], ['cancelDrag', 'dragCancel'], ['openMenu', 'menu'], ['restore', 'restore']]) {
+    electron.invoke.mockResolvedValueOnce({ ok: true });
+    expect(await mini[method!]()).toEqual({ ok: true });
+    expect(electron.invoke).toHaveBeenLastCalledWith(COMPANION_CHANNEL, { type: command });
+  }
+  expect(electron.on).not.toHaveBeenCalled();
+  electron.invoke.mockResolvedValueOnce({ ok: true, accessToken: 'synthetic' });
+  await expect(mini.restore()).rejects.toThrow();
 });
