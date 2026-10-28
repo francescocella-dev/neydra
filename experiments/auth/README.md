@@ -1,15 +1,21 @@
 # Esperimento P0A: autenticazione ufficiale con piano ChatGPT
 
-**Esito: `UNVERIFIED`.** Il proprietario ha segnalato consenso reale e catalogo
-modelli riusciti. La seconda e ultima prova reale con `gpt-5.6-luna` ha restituito
-HTTP 200, categoria MIME `missing`, corpo presente e `BLOCKED/expected_event_stream`.
-Il completamento dell'inferenza e i costi non sono provati.
-[Fonti e risultati](FINDINGS.md). Nessuna modifica al 3D.
+**Esito del probe OAuth + inferenza testuale diretta: `PASS`**
+(**28 ottobre 2026, prova reale eseguita e riferita dal proprietario**).
+Identità e permessi del piano ChatGPT verificati, modello `gpt-5.6-luna`,
+`completed:true`, `expectedText:true` e
+`missingMimeStreamValidated:true`. Il proprietario ha segnalato **zero
+crediti acquistati e nessun addebito o consumo visibile** dopo il test.
+La fatturazione non è certificata dal programma (`billingVerified:false`);
+integrazione Codex, Electron e prodotto completo **`UNVERIFIED`**.
+[Fonti, prove e limiti](FINDINGS.md). Nessuna modifica al 3D.
 
-**Follow-up corrente: solo analisi e test simulati.** Non eseguire `npm start`,
-`run.mjs`, OAuth o inferenza. Le due prove autorizzate sono concluse: non ripeterle
-e non chiedere al proprietario altri tentativi. Le istruzioni reali sotto sono
-sospese. Vedi l'[analisi e proposta offline sul MIME mancante](MISSING_MIME_ANALYSIS.md).
+**Follow-up corrente:** il test reale singolo è già riuscito; non richiedere
+ulteriori ripetizioni per provarne il completamento. Per NEYDRA rimangono
+in revisione sicurezza, OAuth/refresh nel processo main, confini IPC, UI,
+voce e turno Codex (non verificato). La PR rimane in bozza; le istruzioni
+d'esecuzione riportate sotto sono un runbook storico/manuale e **non**
+autorizzano nuove chiamate.
 
 Questo è un esperimento **Node per il futuro processo main di Electron**: non
 include una finestra Electron, un renderer o un'applicazione pronta da distribuire.
@@ -17,9 +23,12 @@ Non richiede installazione npm, chiavi API, backend o servizi aggiuntivi.
 
 ## Experimental strict handling for HTTP 200 with missing Content-Type
 
-This branch now contains a **candidate** fix in `auth.mjs`, introduced after
-the two owner-reported HTTP 200 / missing-MIME responses. **It has not been
-executed against a real authenticated response and is not proven to fix inference.**
+This branch contains a narrowly scoped strict SSE compatibility fix in
+`auth.mjs`, introduced after two owner-reported HTTP 200 / missing-MIME
+responses. **The owner subsequently verified it on one real authenticated
+response (2026-10-28): `completed:true`, `expectedText:true`,
+`missingMimeStreamValidated:true`.** This is a probe result, not production
+security approval or proof of billing behavior across future usage.
 
 Unlike the previous strict MIME guard, a `200` with a missing/blank MIME and
 an actual ReadableStream can now be inspected **in that same HTTP response**.
@@ -65,8 +74,9 @@ npm test
 Remove-Item Env:\NEYDRA_TEST_LOOPBACK
 ```
 
-Il primo test esegue 57 casi senza rete e salta 2 test socket. Il secondo deve
-eseguire tutti i 59 casi. I callback sintetici dei test non aprono OpenAI e non
+Al commit `cfac788`, il proprietario ha verificato su Windows la suite
+completa con i test socket attivati: **78 superati, 0 falliti, 0 saltati**.
+La suite senza socket attivati ne salta 2. I callback sintetici dei test non aprono OpenAI e non
 rappresentano un consenso OAuth. Se il bind locale è vietato, quei test non sono
 verificati: non aggirare firewall o policy con privilegi amministrativi.
 
@@ -155,15 +165,20 @@ Esempio **esclusivamente simulato**, non ricostruzione della risposta dell'utent
 {"status":"BLOCKED","reason":"expected_event_stream","httpStatus":200,"bodyShape":null,"contentTypeCategory":"json","hasBodyStream":true,"requestId":null}
 ```
 
-Il guard riconosce `text/event-stream` normalizzato, indipendentemente da maiuscole
-e parametri; una semplice sottostringa non basta. JSON, HTML, header mancante o
-corpo assente continuano a bloccare l'inferenza; un SSE valido richiede ancora
-`response.completed`. Nessun retry, lettura del corpo inatteso o fallback.
-Lo schema di `evidence.example.json` è ora versione 2.
+Il guard riconosce `text/event-stream` normalizzato, indipendentemente
+da maiuscole e parametri; una semplice sottostringa non basta. JSON, HTML e
+un corpo assente continuano a bloccare l'inferenza. **In presenza di HTTP 200,
+un corpo disponibile e MIME mancante**, il parser può leggere **la stessa
+risposta** e validarne rigorosamente gli eventi SSE, senza ripetere la richiesta.
+La prova reale del 28 ottobre ha confermato `response.completed` e il testo
+esatto atteso. Per dettagli di limiti, rischi e evidenza consulta
+[FINDINGS.md](FINDINGS.md). Nessun retry o fallback.
+Lo schema di `evidence.example.json` è versione 2.
 
-Il prototipo `sse-proposal.mjs` studia un riconoscimento strutturale limitato
-**solo con fixture**. Non è collegato a questo guard: `textRequest()` continua a
-rifiutare MIME mancante senza leggere il corpo. Non equivale a inferenza risolta.
+Il prototipo `sse-proposal.mjs` rimane un'analisi isolata con fixture;
+**non è importato dal percorso runtime**. Il percorso reale usa il proprio
+parser `sse()` in `auth.mjs`, testato tramite fixture e poi osservato
+in una singola richiesta reale autorizzata.
 
 ## Dati locali e interruzione
 
