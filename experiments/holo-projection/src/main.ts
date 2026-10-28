@@ -4,6 +4,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { inspectGlb, validateScene, rigReport } from './assets';
 import { Projection } from './projection';
 import { holoMaterial } from './material';
+import { projectionBeam } from './beam';
+import { holoSpeech } from './speech-profile';
 import { applyFace, setMorph } from './rig';
 import { AvatarEngine } from './engine/AvatarEngine';
 import { DEMO_CAPTION, DEMO_CUES, DEMO_DURATION } from './engine/demo';
@@ -61,12 +63,38 @@ async function start() {
   shader.material.depthWrite = false;
   shader.material.depthFunc = THREE.EqualDepth;
   const scene = new THREE.Scene();
+  // The canvas itself contains the background, so WebGL recordings retain it.
+  scene.background = new THREE.Color(tokens.palette.backgroundMid);
+  const backdropMaterial = new THREE.ShaderMaterial({
+    uniforms: { uLight: { value: 0 } }, depthWrite: false, depthTest: false,
+    vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader: `varying vec2 vUv; uniform float uLight;
+      void main(){ float glow=exp(-dot((vUv-0.5)*4.0,(vUv-0.5)*4.0));
+      vec3 color=mix(vec3(0.016,0.063,0.122),vec3(0.071,0.212,0.361),glow);
+      gl_FragColor=vec4(mix(color,vec3(0.42,0.58,0.70),uLight),1.0); }`,
+  });
+  const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(height*7,height*7),backdropMaterial);
+  backdrop.position.z=-height*1.1;
+  backdrop.renderOrder=-100;
+  scene.add(backdrop);
+  const markerPoints: THREE.Vector3[] = [];
+  for (let n=-6;n<=6;n++) {
+    const d=n*height*0.10;
+    markerPoints.push(new THREE.Vector3(d,-height,0),new THREE.Vector3(d,height,0));
+    markerPoints.push(new THREE.Vector3(-height,d,0),new THREE.Vector3(height,d,0));
+  }
+  const markers = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(markerPoints),
+    new THREE.LineBasicMaterial({color: tokens.palette.stroke}));
+  markers.position.z=-height*0.8;
+  markers.renderOrder=-90;
+  markers.visible=false;
+  scene.add(markers);
   const pivot = new THREE.Group();
   pivot.add(gltf.scene);
   scene.add(pivot);
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
-  renderer.setClearColor(0x000000, 0);
+  renderer.setClearColor(tokens.palette.backgroundMid, 1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   stage.append(renderer.domElement);
   const camera = new THREE.PerspectiveCamera(32, 1, 0.01, 10);
@@ -95,17 +123,12 @@ async function start() {
 
   const originY = box.min.y - height * 0.35;
   const apertureMaterial = new THREE.MeshBasicMaterial({ color: tokens.palette.primary, transparent: true, opacity: 0.6 });
-  const aperture = new THREE.Mesh(new THREE.RingGeometry(height * 0.047, height * 0.065, 64), apertureMaterial);
+  const aperture = new THREE.Mesh(new THREE.RingGeometry(height * 0.025, height * 0.031, 64), apertureMaterial);
   aperture.rotation.x = -Math.PI / 2;
   aperture.position.set(0, originY, 0);
   scene.add(aperture);
-  // A local, low-alpha 3D volume; no camera/device access or external textures.
-  const beamMaterial = new THREE.MeshBasicMaterial({ color: tokens.palette.primary, transparent: true,
-    opacity: 0.035, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
-  const beamHeight = height * 0.73;
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(height * 0.32, height * 0.035, beamHeight, 48, 1, true), beamMaterial);
-  beam.position.set(0, originY + beamHeight / 2, -height * 0.05);
-  beam.renderOrder = -1;
+  const beamEffect = projectionBeam(height,originY);
+  const beam = beamEffect.group;
   scene.add(beam);
 
   const projection = new Projection();
@@ -179,11 +202,13 @@ async function start() {
     neutral = (event.target as HTMLInputElement).checked;
     shader.uniforms.uHolo.value = neutral ? 0 : 1;
     shader.material.color.set(neutral ? '#aab7c2' : tokens.palette.primary);
-    shader.material.emissiveIntensity = neutral ? 0 : 0.22;
+    shader.material.emissiveIntensity = neutral ? 0 : 0.045;
   };
   element<HTMLInputElement>('light').onchange = event => {
-    scene.background = (event.target as HTMLInputElement).checked ? new THREE.Color('#d4e3ed') : null;
+    backdropMaterial.uniforms.uLight.value = Number((event.target as HTMLInputElement).checked);
   };
+  element<HTMLInputElement>('markers').onchange = event => { markers.visible=(event.target as HTMLInputElement).checked; };
+  element<HTMLInputElement>('iris').onchange = event => { shader.uniforms.uIris.value=Number((event.target as HTMLInputElement).checked); };
   poseInput.onchange = () => { const pose = poseInput.value; cancel(); inspection = true; poseInput.value = pose; };
   stateInput.onchange = () => {
     const state = stateInput.value as AvatarState;
@@ -208,6 +233,7 @@ async function start() {
   let frameCount = 0;
   let frameMs = 0;
   let lastFrame = performance.now();
+  const frameDurations: number[] = [];
   const render = () => {
     now = performance.now();
     elapsedDemo = demoStart === null ? 0 : now - demoStart;
@@ -221,17 +247,18 @@ async function start() {
     const frame = engine.sample(now);
     if (inspection) { applyPose(); pivot.rotation.set(0, 0, 0); }
     else {
-      applyFace(head, frame.face);
+      applyFace(head, holoSpeech(frame.face));
       // Legacy engine drift is limited to the current Holo design envelopes.
       pivot.rotation.set(THREE.MathUtils.clamp(frame.pitch, -0.0175, 0.0175), THREE.MathUtils.clamp(frame.yaw, -0.0262, 0.0262), 0);
     }
     const p = manualProgress ?? projection.sample(now);
     shader.uniforms.uProgress.value = p;
-    apertureMaterial.opacity = p * 0.75;
+    shader.uniforms.uBlinkLeft.value=head.morphTargetInfluences![head.morphTargetDictionary!.eyeBlinkLeft];
+    shader.uniforms.uBlinkRight.value=head.morphTargetInfluences![head.morphTargetDictionary!.eyeBlinkRight];
+    apertureMaterial.opacity = p * 0.42;
     beam.visible = !projection.reducedMotion && !neutral && p > 0;
-    beamMaterial.opacity = Math.min(1, p / 0.3) * 0.035;
-    beam.scale.y = Math.max(0.001, Math.min(1, (p - 0.12) / 0.25));
-    beam.position.y = originY + beamHeight * beam.scale.y / 2;
+    beamEffect.uniforms.uStrength.value = Math.min(1,p/0.3);
+    beam.scale.y = Math.max(0.001,Math.min(1,(p-0.10)/0.28));
     if (document.activeElement !== progressInput) progressInput.value = String(p);
     element('percent').textContent = `${Math.round(p * 100)}%`;
     const accent = tokens.palette[tokens.stateAccent[engine.getSnapshot().state] as keyof typeof tokens.palette];
@@ -240,6 +267,8 @@ async function start() {
     controls.update();
     renderer.render(scene, camera);
     frameMs += now - lastFrame;
+    frameDurations.push(now-lastFrame);
+    if (frameDurations.length>6000) frameDurations.shift();
     frameCount++;
     lastFrame = now;
     if (frameCount % 60 === 0) element('metrics').textContent = `${renderer.info.render.triangles.toLocaleString('it')} triangoli · ${(frameMs / frameCount).toFixed(1)} ms/frame (campione locale)`;
@@ -256,7 +285,27 @@ async function start() {
   // Local deterministic inspection surface for genuine loaded-geometry tests.
   window.holoLab = {
     pose(name: string) { cancel(); inspection = true; poseInput.value = name; render(); },
-    progress(value: number) { cancel(); manualProgress = value; projection.seek(value); render(); },
+    progress(value: number) { cancel(); projection.seek(value); manualProgress = projection.sample(performance.now()); render(); },
+    pixels() {
+      render();
+      const context=renderer.getContext();
+      const width=renderer.domElement.width,height=renderer.domElement.height;
+      const buffer=new Uint8Array(width*height*4);
+      context.readPixels(0,0,width,height,context.RGBA,context.UNSIGNED_BYTE,buffer);
+      const values: number[]=[];
+      // Fixed central facial rectangle, independent of background/controls.
+      for(let y=0;y<24;y++) for(let x=0;x<24;x++) {
+        const i=(Math.floor(height*(0.38+y*0.012))*width+Math.floor(width*(0.43+x*0.006)))*4;
+        values.push(buffer[i],buffer[i+1],buffer[i+2]);
+      }
+      return values;
+    },
+    performance(reset=false) {
+      const sorted=[...frameDurations].filter(t=>t>0).sort((a,b)=>a-b);
+      const result={frames:sorted.length,medianMs:sorted[Math.floor(sorted.length*0.5)]??0,p95Ms:sorted[Math.floor(sorted.length*0.95)]??0};
+      if(reset) frameDurations.length=0;
+      return result;
+    },
     view,
     vertex(index: number) { return head.getVertexPosition(index, new THREE.Vector3()).toArray(); },
     morphGeometry(name: string) {
@@ -285,6 +334,8 @@ async function start() {
 declare global { interface Window { holoLab: {
   ready: boolean; pose(name: string): void; progress(value: number): void; view(name: string): void;
   vertex(index: number): number[];
+  pixels(): number[];
+  performance(reset?: boolean): {frames:number;medianMs:number;p95Ms:number};
   morphGeometry(name: string): { changed: number; maximum: number; extremeIndex: number; meanX: number };
   snapshot(): { progress: number; state: string; weights: Record<string, number>; renderer: THREE.WebGLInfo['render']; webgl: string;
     reduced: boolean; beamVisible: boolean; states: readonly string[] };

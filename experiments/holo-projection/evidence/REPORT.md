@@ -1,5 +1,7 @@
 # Issue #13 — local technical evidence (2026-10-29)
 
+This is the preserved v1 baseline. For the subsequent renderer-only visual review, updated captures, test counts and measurements, see [VISUAL_REVIEW_V2.md](VISUAL_REVIEW_V2.md).
+
 **Result:** real approved Blender input → compact morph GLB → real Three.js rendering **PASS for the measured technical checks**. Holographic cosmetic acceptance **PENDING OWNER REVIEW**. No merge, release, billed service or desktop integration.
 
 ## Preserved baseline and boundaries

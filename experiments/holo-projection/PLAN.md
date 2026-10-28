@@ -6,3 +6,5 @@
 4. Validate geometry in Blender and Three.js, transitions, desktop/narrow renders, report actual limitations, open a separate draft PR against main.
 
 Baseline: main 92d4793; original checkout feat/desktop-mini-interface c965021 with untracked Mini/reference/asset work preserved. Specifications read from origin/feat/holo-design-system-v1 and origin/docs/holo-3d-prototype-plan; no branch merge. No desktop, auth, speech provider or Mini changes.
+
+Visual review pass (2026-10-29, comment 6483271288): preserve v1 captures locally; change only renderer material/reveal/beam/background, optional shader iris proposal and capped synthetic speech profile. Keep approved GLB/Blender hashes and all morph mappings. Repeat asset/unit/browser/build checks; capture identical-camera frames and v2 WebGL recording, with marker translucency and pixel continuity measurements. Update this draft without binary commits.
