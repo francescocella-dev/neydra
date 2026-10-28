@@ -1,5 +1,10 @@
 # Companion circolare — report di implementazione e verifiche
 
+> Storico V1: il proprietario ha poi verificato `4d59111` su Windows (113 unit,
+> 2 E2E, entrambi i preload e mouse fisico). Esperienza ancora non approvata.
+> Il [report V2 corrente](COMPANION_V2_REPORT.md) distingue le nuove prove offline
+> dalla convalida fisica e visiva ancora richiesta.
+
 28 ottobre 2026, branch `feat/desktop-mini-interface`, PR #10 **DRAFT**.
 Partenza `9b8fc610274f98b24f88f1e4312646ed2d30d950`. Il proprietario riferisce su
 questa baseline Windows **93/93 unit, Electron E2E 1/1 PASS e design approvato**.

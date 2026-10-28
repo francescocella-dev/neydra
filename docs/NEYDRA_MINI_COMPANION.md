@@ -1,5 +1,10 @@
 # NEYDRA Mini — prima modalità companion
 
+> Storico V1. Il proprietario ha verificato funzionalmente `4d59111` su Windows
+> (113 unit, 2 E2E e mouse fisico), ma non ha approvato l'esperienza.
+> La [V2 corrente](NEYDRA_MINI_COMPANION_V2.md) sostituisce il menu nativo e aggiunge
+> minimizzazione naturale e geometria stabile; ha una nuova convalida da eseguire.
+
 Branch `feat/desktop-mini-interface`, PR #10 **DRAFT**. Baseline
 `9b8fc610274f98b24f88f1e4312646ed2d30d950`: il proprietario riferisce **93/93 unit,
 Electron E2E 1/1 e design visivo approvati su Windows** per l'interfaccia immersiva.

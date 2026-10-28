@@ -130,6 +130,7 @@ export function App() {
       <div className="brand"><h1>NEYDRA</h1><span>MINI</span></div>
       <div className="window-controls" aria-label="Comandi finestra">
         <button type="button" className={`connection-indicator status-${connection.state}`} aria-label={`ChatGPT: ${connectionLabel[connection.state]}`} title="ChatGPT e modelli" onClick={() => openMenu('account')}><i className="state-dot" aria-hidden="true"/><span>{connectionLabel[connection.state]}</span></button>
+        {fullscreen && <IconButton icon="mini" label="Riduci a Mini" disabled={companionPending} onClick={() => { void reduceToMini(); }} />}
         <IconButton icon={fullscreen ? 'collapse' : 'expand'} label={fullscreen ? 'Esci da schermo intero' : 'Schermo intero'} hint={fullscreen ? 'Esci da schermo intero · F11' : 'Schermo intero · F11'} className={fullscreen ? 'fullscreen-exit' : ''} onClick={() => { void toggleFullscreen(); }} />
         <IconButton id="control-menu-button" icon="menu" label="Apri menu" aria-expanded={settingsOpen} aria-controls="mini-settings" onClick={() => openMenu()} />
       </div>

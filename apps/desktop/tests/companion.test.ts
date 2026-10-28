@@ -8,7 +8,7 @@ function windowFixture(bounds: Rect, visible = true) {
   return {
     isDestroyed: vi.fn(() => destroyed), isVisible: vi.fn(() => shown), isMinimized: vi.fn(() => false),
     isMaximized: vi.fn(() => false),
-    isFullScreen: vi.fn(() => false), restore: vi.fn(),
+    isFullScreen: vi.fn(() => false), setFullScreen: vi.fn(), restore: vi.fn(),
     show: vi.fn(() => { shown = true; }), hide: vi.fn(() => { shown = false; }), focus: vi.fn(),
     getBounds: vi.fn(() => ({ ...position })),
     setPosition: vi.fn((x: number, y: number) => { position = { ...position, x, y }; }),
@@ -133,7 +133,13 @@ describe('separate companion trust boundary', () => {
     expect(await companionCommand({ type: 'restore' }, 'main', f.controller, menu)).toMatchObject({ code: 'untrusted-sender' });
     expect(f.create).not.toHaveBeenCalled(); expect(menu).not.toHaveBeenCalled();
     expect(await companionCommand({ type: 'reduce' }, 'main', f.controller, menu)).toEqual({ ok: true });
-    expect(await companionCommand({ type: 'menu' }, 'companion', f.controller, menu)).toEqual({ ok: true }); expect(menu).toHaveBeenCalledOnce();
+    expect(await companionCommand({ type: 'menu', input: { keyboard: false } }, 'companion', f.controller, menu)).toEqual({ ok: true }); expect(menu).toHaveBeenCalledOnce();
     expect(await companionCommand({ type: 'restore' }, 'companion', f.controller, menu)).toEqual({ ok: true });
   });
+});
+
+it('restores native fullscreen if the OS left it while hidden, without applying normal-window coordinates', async () => {
+  const f = fixture(); f.main.isFullScreen.mockReturnValue(true); await f.controller.reduce();
+  f.main.isFullScreen.mockReturnValue(false); f.controller.restore();
+  expect(f.main.setFullScreen).toHaveBeenCalledExactlyOnceWith(true); expect(f.main.setPosition).not.toHaveBeenCalled();
 });

@@ -31,8 +31,25 @@ runInNewContext(await readFile('dist/preload/companion.cjs', 'utf8'), {
     };
   },
 });
-assert.deepEqual(Object.keys(companion).sort(), ['beginDrag', 'cancelDrag', 'endDrag', 'moveDrag', 'openMenu', 'ready', 'restore']);
+assert.deepEqual(Object.keys(companion).sort(), ['beginDrag', 'cancelDrag', 'closeMenu', 'endDrag', 'moveDrag', 'navigateMenu', 'onMenuState', 'openMenu', 'ready', 'restore']);
 assert.equal(Object.isFrozen(companion), true);
 await companion.restore();
 assert.equal(JSON.stringify(companionCalls), JSON.stringify([{ channel: 'neydra:companion:v1:invoke', payload: { type: 'restore' } }]));
 console.log('Bundled companion preload: PASS (minimal bridge; no account or chat API)');
+
+let orbit;
+const orbitCalls = [];
+runInNewContext(await readFile('dist/preload/orbit.cjs', 'utf8'), {
+  require(name) {
+    assert.equal(name, 'electron', 'Orbit preload must import only Electron');
+    return {
+      contextBridge: { exposeInMainWorld(name, bridge) { assert.equal(name, 'neydraOrbit'); orbit = bridge; } },
+      ipcRenderer: { async invoke(channel, payload) { orbitCalls.push({ channel, payload }); return payload.type === 'role' ? { ok: true, role: 'open' } : { ok: true }; }, on() {}, removeListener() {} },
+    };
+  },
+});
+assert.deepEqual(Object.keys(orbit).sort(), ['activate', 'dismiss', 'getRole', 'navigate', 'onVisibility', 'ready']);
+assert.equal(Object.isFrozen(orbit), true);
+assert.equal((await orbit.getRole()).role, 'open');
+assert.equal(JSON.stringify(orbitCalls), JSON.stringify([{ channel: 'neydra:orbit:v1:invoke', payload: { type: 'role' } }]));
+console.log('Bundled orbit preload: PASS (role only; no chat/account bridge)');

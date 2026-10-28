@@ -236,3 +236,13 @@ it('locks duplicate reductions and leaves the existing session/menu reachable on
   expect(f.bridge.reduceToMini).toHaveBeenCalledOnce();
   expect(f.bridge.connectChatGPT).not.toHaveBeenCalled(); expect(f.bridge.startChatGPT).not.toHaveBeenCalled();
 });
+
+it('offers Reduce to Mini in the fullscreen topbar using the same guarded launcher', async () => {
+  const f = fixture(), user = userEvent.setup(); render(<App />);
+  expect(document.querySelector('.mini-topbar [aria-label="Riduci a Mini"]')).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'Schermo intero' }));
+  const reduce = screen.getByRole('button', { name: 'Riduci a Mini' });
+  expect(document.querySelector('.mini-topbar')?.contains(reduce)).toBe(true);
+  await user.click(reduce); expect(f.bridge.reduceToMini).toHaveBeenCalledOnce();
+  expect(f.bridge.connectChatGPT).not.toHaveBeenCalled(); expect(f.bridge.startChatGPT).not.toHaveBeenCalled();
+});

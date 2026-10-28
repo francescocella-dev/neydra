@@ -1,10 +1,13 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import { resolve } from 'node:path';
 
-test('companion lifecycle, narrow renderer, deterministic drag, native recovery and session continuity', async () => {
+const ORBIT = 'app://orbit/index.html';
+
+test('companion lifecycle V2: minimize, stable geometry, orbital menu and session continuity', async () => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => key !== 'ELECTRON_RUN_AS_NODE' && value !== undefined)) as Record<string, string>;
   const desktop = await electron.launch({ args: [resolve('.')], env, chromiumSandbox: true });
   let exited = false;
+  const geometry: unknown[] = [];
   try {
     const main = await desktop.firstWindow();
     const prompt = main.getByLabel('Messaggio per ChatGPT (massimo 2000 caratteri)');
@@ -13,101 +16,127 @@ test('companion lifecycle, narrow renderer, deterministic drag, native recovery 
     let reloads = 0; main.on('load', () => { ++reloads; });
     const mainId = await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.id);
     const state = () => desktop.evaluate(({ BrowserWindow }, id) => {
-      const mainWindow = BrowserWindow.fromId(id)!;
-      const floating = BrowserWindow.getAllWindows().find(window => window.id !== id);
-      return { count: BrowserWindow.getAllWindows().length, mainVisible: mainWindow.isVisible(), mainFocused: mainWindow.isFocused(),
-        floatingVisible: floating?.isVisible() ?? false, floatingId: floating?.id };
+      const main = BrowserWindow.fromId(id)!;
+      const core = BrowserWindow.getAllWindows().find(window => window.webContents.getURL() === 'app://companion/index.html');
+      const satellites = BrowserWindow.getAllWindows().filter(window => window.webContents.getURL() === 'app://orbit/index.html');
+      return { count: BrowserWindow.getAllWindows().length, mainVisible: main.isVisible(), mainFocused: main.isFocused(), minimized: main.isMinimized(),
+        coreVisible: core?.isVisible() ?? false, coreId: core?.id, orbitVisible: satellites.filter(window => window.isVisible()).length };
     }, mainId);
-    const reduce = async () => {
-      await main.getByRole('button', { name: 'Apri menu', exact: true }).click();
-      await main.getByRole('button', { name: 'Riduci a Mini', exact: true }).click();
-      await expect.poll(state).toMatchObject({ count: 2, mainVisible: false, floatingVisible: true });
-    };
+    const reduced = () => expect.poll(state).toMatchObject({ mainVisible: false, coreVisible: true });
     const restored = async () => {
-      await expect.poll(state).toMatchObject({ mainVisible: true, mainFocused: true, floatingVisible: false });
+      await expect.poll(state).toMatchObject({ mainVisible: true, mainFocused: true, minimized: false, coreVisible: false, orbitVisible: 0 });
       await expect(prompt).toHaveValue('Bozza sintetica locale, nessun invio');
       await expect(main.getByRole('dialog', { name: 'Pannello di controllo' })).toBeHidden();
-      expect(await original!.evaluate(element => element.isConnected)).toBe(true);
-      expect(reloads).toBe(0);
+      expect(await original!.evaluate(element => element.isConnected)).toBe(true); expect(reloads).toBe(0);
     };
-    const firstFloating = desktop.waitForEvent('window');
-    await reduce(); const floating = await firstFloating;
-    const id = (await state()).floatingId!;
-    await expect(floating.getByRole('button', { name: 'Apri NEYDRA', exact: true })).toBeVisible();
-    expect(await floating.evaluate(() => ({ mainBridge: typeof window.neydra,
-      require: typeof Reflect.get(window, 'require'), process: typeof Reflect.get(window, 'process'),
-      methods: Object.keys(window.neydraCompanion).sort(), background: getComputedStyle(document.body).backgroundColor,
-      round: getComputedStyle(document.getElementById('companion')!).borderRadius }))).toEqual({
-      mainBridge: 'undefined', require: 'undefined', process: 'undefined', methods: ['beginDrag', 'cancelDrag', 'endDrag', 'moveDrag', 'openMenu', 'ready', 'restore'],
-      background: 'rgba(0, 0, 0, 0)', round: '50%',
-    });
-    expect(await desktop.evaluate(({ BrowserWindow }, windowId) => {
-      const window = BrowserWindow.fromId(windowId)!;
-      return { top: window.isAlwaysOnTop(), resize: window.isResizable(), fullscreen: window.isFullScreenable() };
-    }, id)).toEqual({ top: true, resize: false, fullscreen: false });
+    const reduce = async () => {
+      await main.getByRole('button', { name: 'Apri menu', exact: true }).click();
+      await main.getByRole('button', { name: 'Riduci a Mini', exact: true }).click(); await reduced();
+    };
+    const firstCore = desktop.waitForEvent('window');
+    // Native BrowserWindow.minimize traverses the Windows minimize event, not a
+    // direct call to the companion controller. The physical titlebar remains a local gate.
+    await desktop.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)!.minimize(), mainId);
+    await reduced(); let core = await firstCore;
+    const coreId = (await state()).coreId!;
+    const stable = async (phase: string) => {
+      const native = await desktop.evaluate(({ BrowserWindow, screen }) => {
+        const core = BrowserWindow.getAllWindows().find(window => window.webContents.getURL() === 'app://companion/index.html')!;
+        const bounds = core.getBounds();
+        return { bounds, content: core.getContentBounds(), scale: screen.getDisplayMatching(bounds).scaleFactor,
+          areas: screen.getAllDisplays().map(display => display.workArea),
+          satellites: BrowserWindow.getAllWindows().filter(window => window.webContents.getURL() === 'app://orbit/index.html')
+            .map(window => ({ bounds: window.getBounds(), visible: window.isVisible() })) };
+      });
+      const renderer = await core.evaluate(() => {
+        const button = document.getElementById('companion')!, box = button.getBoundingClientRect(), style = getComputedStyle(button);
+        return { width: box.width, height: box.height, x: box.x, y: box.y, radius: style.borderRadius, transform: style.transform,
+          appearance: style.appearance, dpr: devicePixelRatio, viewport: { width: innerWidth, height: innerHeight }, captured: button.hasPointerCapture(1) };
+      });
+      geometry.push({ phase, native, renderer });
+      expect(native.bounds).toMatchObject({ width: 120, height: 120 }); expect(native.content).toMatchObject({ width: 120, height: 120 });
+      expect(renderer).toMatchObject({ width: 112, height: 112, x: 4, y: 4, radius: '50%', transform: 'none', appearance: 'none' });
+      for (const satellite of native.satellites.filter(window => window.visible)) {
+        expect(satellite.bounds).toMatchObject({ width: 64, height: 64 });
+        expect(native.areas.some(area => satellite.bounds.x >= area.x && satellite.bounds.y >= area.y && satellite.bounds.x + 64 <= area.x + area.width && satellite.bounds.y + 64 <= area.y + area.height)).toBe(true);
+      }
+    };
+    await expect(core.getByRole('button', { name: 'Apri NEYDRA', exact: true })).toBeVisible();
+    expect(await core.evaluate(() => ({ mainBridge: typeof window.neydra, orbitBridge: typeof window.neydraOrbit,
+      require: typeof Reflect.get(window, 'require'), process: typeof Reflect.get(window, 'process'), methods: Object.keys(window.neydraCompanion).sort() })))
+      .toEqual({ mainBridge: 'undefined', orbitBridge: 'undefined', require: 'undefined', process: 'undefined',
+        methods: ['beginDrag', 'cancelDrag', 'closeMenu', 'endDrag', 'moveDrag', 'navigateMenu', 'onMenuState', 'openMenu', 'ready', 'restore'] });
     expect(await desktop.evaluate(({ app }) => app.commandLine.hasSwitch('no-sandbox'))).toBe(false);
     if (process.platform === 'win32' || process.platform === 'darwin') {
-      await expect.poll(() => desktop.evaluate(({ app, BrowserWindow }, windowId) => {
-        const pid = BrowserWindow.fromId(windowId)!.webContents.getOSProcessId();
-        return app.getAppMetrics().find(metric => metric.pid === pid)?.sandboxed;
-      }, id)).toBe(true);
+      await expect.poll(() => desktop.evaluate(({ app, BrowserWindow }, id) => {
+        const pid = BrowserWindow.fromId(id)!.webContents.getOSProcessId(); return app.getAppMetrics().find(metric => metric.pid === pid)?.sandboxed;
+      }, coreId)).toBe(true);
     }
-    await floating.screenshot({ path: 'evidence/mini-companion.png' });
-
-    // Test-only probe: CDP pointer events do not move the real OS cursor. Override
-    // only cursor readings for deterministic drag, never setPosition or the IPC/controller.
-    // Replace native popup only to invoke its actual Open/Exit items without OS menu automation.
-    const probe = await desktop.evaluateHandle(({ screen, Menu, BrowserWindow }) => {
-      const cursor = screen.getCursorScreenPoint, popup = Menu.prototype.popup;
-      let point: { x: number; y: number } | undefined;
-      const menus: Electron.Menu[] = [];
-      screen.getCursorScreenPoint = () => point ?? cursor.call(screen);
-      Menu.prototype.popup = function () { menus.push(this); };
-      return {
-        point(x: number, y: number) { point = { x, y }; },
-        resetCursor() { point = undefined; },
-        labels() { return menus.at(-1)?.items.map(item => item.label) ?? []; },
-        choose(label: string) {
-          const item = menus.at(-1)?.items.find(item => item.label === label);
-          if (!item) throw new Error('Missing native menu action');
-          const click = () => item.click(item, BrowserWindow.getFocusedWindow() ?? undefined, {} as Electron.KeyboardEvent);
-          if (label === 'Esci') setTimeout(click, 50); else click();
-        },
-        dispose() { screen.getCursorScreenPoint = cursor; Menu.prototype.popup = popup; },
-      };
+    // Only the OS cursor reading is simulated: CDP does not move the physical
+    // cursor. Real renderer, IPC, controller and native setPosition are retained.
+    const probe = await desktop.evaluateHandle(({ screen }) => {
+      const original = screen.getCursorScreenPoint; let point: { x: number; y: number } | undefined;
+      screen.getCursorScreenPoint = () => point ?? original.call(screen);
+      return { point(x: number, y: number) { point = { x, y }; }, reset() { point = undefined; }, dispose() { screen.getCursorScreenPoint = original; } };
     });
     try {
-      const { before, area } = await desktop.evaluate(({ BrowserWindow, screen }, windowId) => {
-        const before = BrowserWindow.fromId(windowId)!.getBounds();
-        return { before, area: screen.getDisplayMatching(before).workArea };
-      }, id);
-      const target = { x: area.x + Math.min(24, area.width - before.width), y: area.y + Math.min(24, area.height - before.height) };
-      await probe.evaluate(p => p.point(500, 500));
-      await floating.mouse.move(60, 60); await floating.mouse.down();
-      await floating.evaluate(() => window.neydraCompanion.ready()); // IPC barrier after pointerdown.
+      await stable('idle'); await core.getByRole('button').hover(); await stable('hover');
+      const { before, area } = await desktop.evaluate(({ BrowserWindow, screen }, id) => {
+        const before = BrowserWindow.fromId(id)!.getBounds(); return { before, area: screen.getDisplayMatching(before).workArea };
+      }, coreId);
+      const target = { x: area.x + Math.min(24, area.width - 120), y: area.y + Math.min(24, area.height - 120) };
+      await probe.evaluate(p => p.point(500, 500)); await core.mouse.move(60, 60); await core.mouse.down();
+      await core.evaluate(() => window.neydraCompanion.ready()); await stable('pressed');
       await probe.evaluate((p, point) => p.point(point.x, point.y), { x: 500 + target.x - before.x, y: 500 + target.y - before.y });
-      await floating.mouse.move(62, 62); await floating.mouse.up();
-      await floating.evaluate(() => window.neydraCompanion.ready()); // IPC barrier after pointerup.
-      await expect.poll(() => desktop.evaluate(({ BrowserWindow }, windowId) => {
-        const window = BrowserWindow.fromId(windowId)!, { x, y, width, height } = window.getBounds();
-        return { x, y, width, height, visible: window.isVisible() };
-      }, id)).toMatchObject({ ...target, visible: true });
-      await probe.evaluate(p => p.resetCursor());
-      await floating.getByRole('button', { name: 'Apri NEYDRA', exact: true }).click(); await restored();
-      await reduce(); expect((await state()).floatingId).toBe(id);
-      await floating.getByRole('button', { name: 'Apri NEYDRA' }).click({ button: 'right' });
-      await expect.poll(() => probe.evaluate(p => p.labels())).toEqual(['Apri NEYDRA', 'Esci']);
-      await probe.evaluate(p => p.choose('Apri NEYDRA')); await restored();
+      await core.mouse.move(62, 62); await core.evaluate(() => window.neydraCompanion.ready()); await stable('drag');
+      await core.mouse.up(); await core.evaluate(() => window.neydraCompanion.ready());
+      await expect.poll(() => desktop.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)!.getPosition(), coreId)).toEqual([target.x, target.y]);
+      await stable('released'); await probe.evaluate(p => p.reset());
+      await core.getByRole('button').click(); await restored();
+      await main.getByRole('button', { name: 'Schermo intero', exact: true }).click();
+      await expect(main.locator('.mini-topbar').getByRole('button', { name: 'Riduci a Mini', exact: true })).toBeVisible();
+      await main.locator('.mini-topbar').getByRole('button', { name: 'Riduci a Mini', exact: true }).click(); await reduced();
+      expect((await state()).coreId).toBe(coreId);
+      await core.getByRole('button').click(); await restored();
+      await main.getByRole('button', { name: /^Esci da schermo intero/ }).click();
       await reduce();
-      // Native companion close must recover main instead of leaving a hidden process.
-      await desktop.evaluate(({ BrowserWindow }, windowId) => BrowserWindow.fromId(windowId)!.close(), id);
+      const orbital = async (keyboard = false) => {
+        if (keyboard) { await core.getByRole('button').focus(); await core.keyboard.press('Shift+F10'); }
+        else await core.getByRole('button').click({ button: 'right' });
+        await expect.poll(state).toMatchObject({ orbitVisible: 2, count: 4 });
+        const pages = desktop.windows().filter(page => page.url() === ORBIT);
+        const named = await Promise.all(pages.map(async page => ({ page, role: await page.evaluate(() => window.neydraOrbit.getRole()) })));
+        return { open: named.find(entry => entry.role.ok && entry.role.role === 'open')!.page,
+          exit: named.find(entry => entry.role.ok && entry.role.role === 'exit')!.page };
+      };
+      let menu = await orbital(); await stable('menu-open');
+      await menu.exit.getByRole('menuitem', { name: 'Esci', exact: true }).hover();
+      expect((await state()).mainVisible).toBe(false); // Hover never quits or opens.
+      for (const page of [menu.open, menu.exit]) {
+        expect(await page.evaluate(() => ({ chat: typeof window.neydra, core: typeof window.neydraCompanion, keys: Object.keys(window.neydraOrbit).sort() })))
+          .toEqual({ chat: 'undefined', core: 'undefined', keys: ['activate', 'dismiss', 'getRole', 'navigate', 'onVisibility', 'ready'] });
+      }
+      await core.getByRole('button').click({ button: 'right' }); await expect.poll(state).toMatchObject({ orbitVisible: 0 }); await stable('menu-toggle-close');
+      menu = await orbital(true); await expect(menu.open.getByRole('menuitem')).toBeFocused();
+      await menu.open.keyboard.press('Tab'); await expect(menu.exit.getByRole('menuitem')).toBeFocused();
+      await menu.exit.keyboard.press('Escape'); await expect.poll(state).toMatchObject({ orbitVisible: 0 }); await stable('escape-close');
+      menu = await orbital(); await menu.open.getByRole('menuitem').click(); await restored();
+      await reduce();
+      // Genuine companion close must recover main; its child overlays must vanish.
+      await desktop.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)!.close(), coreId);
       await restored(); expect((await state()).count).toBe(1);
-      const nextWindow = desktop.waitForEvent('window'); await reduce(); const next = await nextWindow;
-      await next.getByRole('button', { name: 'Apri NEYDRA' }).focus(); await next.keyboard.press('Enter'); await restored();
-      await reduce();
-      await next.getByRole('button', { name: 'Apri NEYDRA' }).click({ button: 'right' });
+      const next = desktop.waitForEvent('window'); await reduce(); core = await next;
+      await core.getByRole('button').focus(); await core.keyboard.press('Enter'); await restored();
+      await reduce(); menu = await orbital();
+      await menu.open.emulateMedia({ reducedMotion: 'reduce' });
+      expect(await menu.open.getByRole('menuitem').evaluate(button => getComputedStyle(button).animationName)).toBe('none');
       const closed = desktop.waitForEvent('close');
-      await probe.evaluate(p => p.choose('Esci')); await closed; exited = true;
+      // Schedule the DOM activation only to let the test transport return before app.quit.
+      await menu.exit.getByRole('menuitem').evaluate(button => { setTimeout(() => (button as HTMLButtonElement).click(), 50); });
+      await closed; exited = true;
     } finally { if (!exited) { await probe.evaluate(p => p.dispose()).catch(() => {}); await probe.dispose(); } }
+  } catch (error) {
+    await test.info().attach('companion-v2-geometry', { body: JSON.stringify(geometry, null, 2), contentType: 'application/json' });
+    throw error;
   } finally { if (!exited) await desktop.close(); }
 });

@@ -1,9 +1,10 @@
 @font-face { font-family: Oxanium; src: url('../renderer/fonts/oxanium-latin-variable.woff2') format('woff2'); font-style: normal; font-weight: 200 800; font-display: swap; }
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; margin: 0; background: transparent; }
-body { display: grid; place-items: center; }
-#companion { width: calc(100% - 8px); height: calc(100% - 8px); margin: 0; padding: 0; border: 1px solid #d88b4f; border-radius: 50%; background: radial-gradient(circle at 35% 28%, #282729, #101114 72%); color: #ffb67b; font: 500 44px/1 Oxanium, sans-serif; cursor: grab; user-select: none; touch-action: none; box-shadow: inset 0 0 16px #ef954a12; }
+body { position: relative; user-select: none; }
+/* Fixed DIP geometry and no native pressed-button appearance. Neither resizing
+   a viewport nor :active/hover/menu state can scale the visible core. */
+#companion { appearance: none; position: absolute; left: 4px; top: 4px; display: grid; place-items: center; width: 112px; height: 112px; min-width: 112px; min-height: 112px; max-width: 112px; max-height: 112px; transform: none; margin: 0; padding: 0; border: 1px solid #d88b4f; border-radius: 50%; background: radial-gradient(circle at 35% 28%, #282729, #101114 72%); color: #ffb67b; font: 500 44px/1 Oxanium, sans-serif; cursor: grab; user-select: none; touch-action: none; box-shadow: inset 0 0 16px #ef954a12; }
 #companion:active { cursor: grabbing; }
-#companion:hover { border-color: #ffd0a5; }
-#companion:focus-visible { outline: 2px solid #ffbd87; outline-offset: 1px; }
+#companion:focus-visible { outline: 2px solid #ffbd87; outline-offset: -5px; }
 #companion-help { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

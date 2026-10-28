@@ -17,6 +17,7 @@ interface MainWindow extends CompanionWindow {
   isMinimized(): boolean;
   isMaximized(): boolean;
   isFullScreen(): boolean;
+  setFullScreen(enabled: boolean): void;
   restore(): void;
 }
 
@@ -41,9 +42,12 @@ export class CompanionController {
   private epoch = 0;
   private disposed = false;
   private mini = false;
+  private restoring = false;
+  private fullscreenBeforeHide = false;
   private drag?: { cursor: Point; bounds: Rect; moved: boolean };
   constructor(private readonly main: MainWindow, private readonly create: () => Promise<CompanionWindow>,
-    private readonly areas: () => Rect[], private readonly cursor: () => Point, private readonly quit: () => void) {}
+    private readonly areas: () => Rect[], private readonly cursor: () => Point, private readonly quit: () => void,
+    private readonly beforeChange: () => void = () => {}) {}
 
   async reduce(): Promise<CompanionResult> {
     if (this.disposed || this.main.isDestroyed()) return { ok: false, code: 'unavailable' };
@@ -62,6 +66,7 @@ export class CompanionController {
       floating.show();
       floating.focus();
       if (!floating.isVisible()) throw new Error('Companion not visible');
+      this.fullscreenBeforeHide = this.main.isFullScreen();
       this.mini = true;
       this.main.hide(); // Only after a loaded, visible recovery window exists.
       return { ok: true };
@@ -76,10 +81,15 @@ export class CompanionController {
     ++this.epoch;
     this.drag = undefined;
     this.mini = false;
+    this.restoring = true;
+    const restoreFullscreen = this.fullscreenBeforeHide;
+    this.fullscreenBeforeHide = false;
     try {
+      this.beforeChange();
       if (this.main.isDestroyed()) throw new Error('Main unavailable');
       if (this.main.isMinimized()) this.main.restore();
-      if (!this.main.isFullScreen() && !this.main.isMaximized()) {
+      if (restoreFullscreen && !this.main.isFullScreen()) this.main.setFullScreen(true);
+      if (!restoreFullscreen && !this.main.isFullScreen() && !this.main.isMaximized()) {
         const bounds = this.main.getBounds();
         const point = reachablePosition(bounds, this.areas(), false);
         if (point && (point.x !== bounds.x || point.y !== bounds.y)) this.main.setPosition(point.x, point.y);
@@ -92,8 +102,9 @@ export class CompanionController {
     } catch {
       this.quit(); // Never leave an invisible, unrecoverable process.
       return { ok: false, code: 'unavailable' };
-    }
+    } finally { this.restoring = false; }
   }
+  nativeRestore() { if (this.pending && !this.restoring && !this.mini) this.restore(); }
 
   reposition(): boolean {
     if (!this.floating || this.floating.isDestroyed()) return false;
@@ -103,11 +114,12 @@ export class CompanionController {
     if (point.x !== bounds.x || point.y !== bounds.y) this.floating.setPosition(point.x, point.y);
     return true;
   }
-  displaysChanged() { this.drag = undefined; if (this.floating && !this.reposition()) this.restore(); }
+  displaysChanged() { this.beforeChange(); this.drag = undefined; if (this.floating && !this.reposition()) this.restore(); }
   recover() { if (!this.disposed && (this.mini || this.pending)) this.restore(); }
 
   beginDrag(): CompanionResult {
     if (!this.mini || !this.floating || this.floating.isDestroyed()) return { ok: false, code: 'unavailable' };
+    this.beforeChange();
     this.drag = { cursor: this.cursor(), bounds: this.floating.getBounds(), moved: false };
     return { ok: true };
   }
@@ -134,13 +146,15 @@ export class CompanionController {
   cancelDrag(): CompanionResult { this.drag = undefined; return { ok: true }; }
   dispose() {
     this.disposed = true; ++this.epoch; this.drag = undefined; this.mini = false;
+    this.beforeChange();
     if (this.floating && !this.floating.isDestroyed()) this.floating.destroy();
     this.floating = undefined;
   }
 }
 
 export async function companionCommand(raw: unknown, source: 'main' | 'companion' | undefined,
-  controller: CompanionController, menu: () => void, ready: () => void = () => {}): Promise<CompanionResult> {
+  controller: CompanionController, menu: (keyboard: boolean) => void | Promise<CompanionResult>, ready: () => void = () => {},
+  dismiss: () => void = () => {}, navigate: (direction: 'next' | 'previous' | 'first' | 'last') => CompanionResult = () => ({ ok: false, code: 'unavailable' })): Promise<CompanionResult> {
   if (!source) return { ok: false, code: 'untrusted-sender' };
   const parsed = companionCommandSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, code: 'invalid-request' };
@@ -155,7 +169,9 @@ export async function companionCommand(raw: unknown, source: 'main' | 'companion
       case 'dragMove': return controller.moveDrag();
       case 'dragEnd': return controller.endDrag();
       case 'dragCancel': return controller.cancelDrag();
-      case 'menu': controller.cancelDrag(); menu(); return { ok: true };
+      case 'menu': controller.cancelDrag(); return await menu(parsed.data.input.keyboard) ?? { ok: true };
+      case 'dismissMenu': dismiss(); return { ok: true };
+      case 'navigateMenu': return navigate(parsed.data.direction);
     }
   } catch { controller.recover(); return { ok: false, code: 'unavailable' }; }
 }
