@@ -1,0 +1,20 @@
+{
+  "name": "neydra",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "engines": { "node": ">=24 <25" },
+  "workspaces": ["apps/desktop"],
+  "scripts": {
+    "setup:electron": "npm run setup:electron -w @neydra/desktop",
+    "dev": "npm run dev -w @neydra/desktop",
+    "start": "npm run start -w @neydra/desktop",
+    "check": "npm run check -w @neydra/desktop",
+    "check:preload": "npm run check:preload -w @neydra/desktop",
+    "lint": "npm run lint -w @neydra/desktop",
+    "typecheck": "npm run typecheck -w @neydra/desktop",
+    "test": "npm run test -w @neydra/desktop",
+    "build": "npm run build -w @neydra/desktop",
+    "test:desktop": "npm run test:desktop -w @neydra/desktop"
+  }
+}
