@@ -2,6 +2,7 @@ import { _electron as electron, expect } from '@playwright/test';
 import { resolve } from 'node:path';
 import { companionGeometry, satelliteGeometryProblems, satelliteShape } from './helpers/companion-geometry';
 import { test } from './helpers/companion-test';
+import { installOrbitNativeProbe } from './helpers/orbit-native-probe';
 import type { ElectronApplication } from '@playwright/test';
 
 const ORBIT = 'app://orbit/index.html';
@@ -9,9 +10,11 @@ const ORBIT = 'app://orbit/index.html';
 test('companion lifecycle V2: minimize, stable geometry, orbital menu and session continuity', async ({ geometry }) => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => key !== 'ELECTRON_RUN_AS_NODE' && value !== undefined)) as Record<string, string>;
   let launched: ElectronApplication | undefined, exited = false;
+  let nativeProbe: Awaited<ReturnType<typeof installOrbitNativeProbe>> | undefined;
   try {
     const desktop = launched = await electron.launch({ args: [resolve('.')], env, chromiumSandbox: true });
     const main = await desktop.firstWindow();
+    nativeProbe = await installOrbitNativeProbe(desktop);
     const prompt = main.getByLabel('Messaggio per ChatGPT (massimo 2000 caratteri)');
     await prompt.fill('Bozza sintetica locale, nessun invio');
     const original = await prompt.elementHandle();
@@ -44,7 +47,7 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
     const stable = async (phase: string) => {
       const snapshot = await companionGeometry(desktop);
       const { native, renderer } = snapshot;
-      geometry.push({ phase, ...snapshot });
+      geometry.push({ phase, ...snapshot, operations: await nativeProbe!.evaluate(probe => probe.drain()) });
       expect(native.bounds).toMatchObject({ width: 120, height: 120 }); expect(native.content).toMatchObject({ width: 120, height: 120 });
       expect(renderer).toMatchObject({ width: 112, height: 112, x: 4, y: 4, radius: '50%', transform: 'none', appearance: 'none' });
       const box = native.bounds!;
@@ -102,20 +105,34 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
         return { open: named.find(entry => entry.role.ok && entry.role.role === 'open')!.page,
           exit: named.find(entry => entry.role.ok && entry.role.role === 'exit')!.page };
       };
-      let menu = await orbital(); const menuShape = await stable('menu-open'); expect(menuShape).toHaveLength(2);
-      await menu.exit.getByRole('menuitem', { name: 'Esci', exact: true }).hover();
-      expect((await state()).mainVisible).toBe(false); // Hover never quits or opens.
-      expect(await stable('menu-hover')).toEqual(menuShape);
-      for (const page of [menu.open, menu.exit]) {
-        expect(await page.evaluate(() => ({ chat: typeof window.neydra, core: typeof window.neydraCompanion, keys: Object.keys(window.neydraOrbit).sort() })))
-          .toEqual({ chat: 'undefined', core: 'undefined', keys: ['activate', 'dismiss', 'getRole', 'navigate', 'onVisibility', 'ready'] });
+      let menu: Awaited<ReturnType<typeof orbital>>;
+      let baseline: Awaited<ReturnType<typeof stable>> | undefined;
+      for (let cycle = 1; cycle <= 5; ++cycle) {
+        menu = await orbital();
+        const shape = await stable(`cycle-${cycle}-menu-open`); expect(shape).toHaveLength(2);
+        baseline ??= shape;
+        // All ten openings reuse the same ids and exact measured geometry.
+        // Raster centering never excuses growth of bounds/content/constraints.
+        expect(shape).toEqual(baseline);
+        await menu.exit.getByRole('menuitem', { name: 'Esci', exact: true }).hover();
+        expect((await state()).mainVisible).toBe(false); // Hover never quits or opens.
+        expect(await stable(`cycle-${cycle}-menu-hover`)).toEqual(baseline);
+        if (cycle === 1) for (const page of [menu.open, menu.exit]) {
+          expect(await page.evaluate(() => ({ chat: typeof window.neydra, core: typeof window.neydraCompanion, keys: Object.keys(window.neydraOrbit).sort() })))
+            .toEqual({ chat: 'undefined', core: 'undefined', keys: ['activate', 'dismiss', 'getRole', 'navigate', 'onVisibility', 'ready'] });
+        }
+        await core.getByRole('button').click({ button: 'right' });
+        await expect.poll(state).toMatchObject({ orbitVisible: 0 }); await stable(`cycle-${cycle}-menu-toggle-close`);
+        menu = await orbital(true); await expect(menu.open.getByRole('menuitem')).toBeFocused();
+        expect(await stable(`cycle-${cycle}-menu-keyboard-open`)).toEqual(baseline);
+        await menu.open.keyboard.press('Tab'); await expect(menu.exit.getByRole('menuitem')).toBeFocused();
+        expect(await stable(`cycle-${cycle}-menu-keyboard-next`)).toEqual(baseline);
+        await menu.exit.keyboard.press('Home'); await expect(menu.open.getByRole('menuitem')).toBeFocused();
+        await menu.open.keyboard.press('End'); await expect(menu.exit.getByRole('menuitem')).toBeFocused();
+        expect(await stable(`cycle-${cycle}-menu-keyboard-end`)).toEqual(baseline);
+        await menu.exit.keyboard.press('Escape'); await expect.poll(state).toMatchObject({ orbitVisible: 0 });
+        await expect(core.getByRole('button')).toBeFocused(); await stable(`cycle-${cycle}-escape-close`);
       }
-      await core.getByRole('button').click({ button: 'right' }); await expect.poll(state).toMatchObject({ orbitVisible: 0 }); await stable('menu-toggle-close');
-      menu = await orbital(true); await expect(menu.open.getByRole('menuitem')).toBeFocused();
-      const keyboardShape = await stable('menu-keyboard-open'); expect(keyboardShape).toHaveLength(2);
-      await menu.open.keyboard.press('Tab'); await expect(menu.exit.getByRole('menuitem')).toBeFocused();
-      expect(await stable('menu-keyboard-next')).toEqual(keyboardShape);
-      await menu.exit.keyboard.press('Escape'); await expect.poll(state).toMatchObject({ orbitVisible: 0 }); await stable('escape-close');
       menu = await orbital(); await menu.open.getByRole('menuitem').click(); await restored();
       await reduce();
       // Genuine companion close must recover main; its child overlays must vanish.
@@ -126,6 +143,7 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
       await reduce(); menu = await orbital();
       await menu.open.emulateMedia({ reducedMotion: 'reduce' });
       expect(await menu.open.getByRole('menuitem').evaluate(button => getComputedStyle(button).animationName)).toBe('none');
+      await stable('menu-after-recovery');
       const closed = desktop.waitForEvent('close');
       // Schedule the DOM activation only to let the test transport return before app.quit.
       await menu.exit.getByRole('menuitem').evaluate(button => { setTimeout(() => (button as HTMLButtonElement).click(), 50); });
@@ -135,5 +153,10 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
     const failure = launched && await companionGeometry(launched).catch(() => undefined);
     if (failure) geometry.push({ phase: 'failure', ...failure });
     throw error;
-  } finally { if (!exited) await launched?.close(); }
+  } finally {
+    const operations = await nativeProbe?.evaluate(probe => { const records = probe.drain(); probe.dispose(); return records; }).catch(() => undefined);
+    if (operations?.length) geometry.push({ phase: 'final-operations', operations });
+    await nativeProbe?.dispose().catch(() => {});
+    if (!exited) await launched?.close();
+  }
 });

@@ -215,3 +215,23 @@ it('satellite focus stays within the menu; outside blur, Escape and drag cancel 
   expect(core.getBounds()).toEqual(before); expect(main.visible).toBe(false); expect(app.quit).not.toHaveBeenCalled();
   vi.useRealTimers();
 });
+
+it('does not hide an already hidden satellite when reusing the native orbital windows', async () => {
+  const main = MockWindow.windows[0]!; await invoke(main, COMPANION_CHANNEL, { type: 'reduce' });
+  const core = MockWindow.windows[1]!;
+  await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
+  const open = MockWindow.windows[2]!, exit = MockWindow.windows[3]!;
+  expect(open.hide).not.toHaveBeenCalled(); expect(exit.hide).not.toHaveBeenCalled();
+  const before = [open.getBounds(), exit.getBounds()];
+  await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
+  for (let cycle = 0; cycle < 5; ++cycle) {
+    const hides = open.hide.mock.calls.length;
+    await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: true } });
+    expect(open.hide).toHaveBeenCalledTimes(hides);
+    expect([open.getBounds(), exit.getBounds()]).toEqual(before);
+    await invoke(exit, ORBIT_CHANNEL, { type: 'navigate', direction: 'first' });
+    expect(MockWindow.focused).toBe(open);
+    await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
+    expect(open.hide).toHaveBeenCalledTimes(hides + 1);
+  }
+});

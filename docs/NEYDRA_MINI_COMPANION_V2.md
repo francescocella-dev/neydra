@@ -1,14 +1,18 @@
 # NEYDRA Mini — Companion V2
 
 PR #10 **DRAFT**, branch `feat/desktop-mini-interface`. Baseline Windows
-`c965021b6cd0bb87c3debcb21ca6ab6c47bfbca6`: il proprietario riferisce check/lint/
-typecheck/build, **128/128 unit, tre preload ed E2E immersivo PASS**. Il companion
-fallisce perché il satellite richiesto da **72×72 DIP** misura **72×73** nativi
-(in precedenza 64 richiesti → 65×65). Mancano ancora contenuto/viewport/scala/DPR
-Windows: l'arrotondamento frameless è un'ipotesi, non una causa certificata.
-La richiesta resta 72×72; non si aumentano dimensioni o tolleranze.
-[Report corrente](../apps/desktop/evidence/COMPANION_V2_REPORT.md#follow-up-windows-dpi-e-json-persistente).
-Nuova prova GUI Windows ancora da eseguire dal proprietario.
+`b7385921ad1a10d8a252cbb949f016ec1ab430df`: il proprietario ha verificato
+**135/135 unit, check/lint/typecheck/build, tre preload ed E2E immersivo PASS**.
+Il JSON reale a DPR 1,25 mostra satelliti nativi 73×72 / 72×73 alla prima apertura,
+contenuto/viewport 72×72 e pulsanti 48×48 a (12,12). Alla riapertura da tastiera,
+riusando le finestre, diventano 74×72 / 72×74; crescono anche i vincoli letti.
+Lo scostamento CSS di 0,2 px è distinto dalla crescita nativa.
+
+Il candidato conserva richiesta 72×72, core 120×120 e pulsanti 48×48; evita
+riposizionamenti superflui di una coppia già valida. La conferma della chiamata
+responsabile su Windows richiede ancora il probe prima/dopo nel nuovo E2E.
+[Report corrente](../apps/desktop/evidence/COMPANION_V2_REPORT.md#follow-up-windows-riuso-senza-drift).
+Nuovo E2E Windows **NON ESEGUITO nel cloud**, nessun PASS Windows anticipato.
 
 ## Riduzione e continuità
 
@@ -58,8 +62,9 @@ cliccabile per recuperare NEYDRA, senza tagliare controlli.
 I satelliti restano nascosti durante il calcolo. Se il passaggio a un altro DPI
 ne cambia la misura, è consentita una sola ricalcolazione. Bounds reali non validi
 dopo il posizionamento, alla comparsa o su successivi eventi move/resize chiudono
-il menu senza ritentare automaticamente. Il CSS centra i 48 DIP nel viewport
-effettivo: a 72×72 l'inset è 12 DIP. Nessun clipping, maschera o epsilon introdotto.
+il menu senza ritentare automaticamente. Il CSS usa un contenitore grid a pieno
+viewport con `place-items:center`, pulsanti invariati da 48 CSS px e le stesse
+animazioni. A viewport 72×72 l'inset ideale è 12 px; nessun clipping o maschera.
 
 Il corpo del companion ha `appearance:none`, dimensioni CSS fisse, nessun
 transform o scale e indicatore di focus **interno**. Anche min/max dei bounds
@@ -74,27 +79,49 @@ I getter nativi di min/max sono raccolti come misure, anch'essi potenzialmente
 convertiti dall'OS. Non si forza il resize e non si assume che native, contenuto
 e viewport siano quadrati o identici fra loro.
 
-L'E2E mantiene esattamente core/contenuto **120×120**, corpo **112×112** e
-pulsanti satellite **48×48 CSS px**, raggio 50%. Il centro è calcolato dal viewport
-misurato: `(larghezza - 48)/2`, `(altezza - 48)/2`; a viewport 72×73 gli inset sono
-**12 e 12,5**, senza epsilon. Verifica anche outline entro il viewport, opacity 1,
-controllo abilitato e hit test del centro. Attende la fine delle animazioni: sono
-ammessi soltanto transform assente o matrice identità esatta (`translate(0,0)`
-lasciato dall'ultimo frame), mai scale o traslazioni residue.
+Quando core e work area consentono ancora la precedente coppia, il controller
+ne conserva le posizioni native misurate: non ricalcola l'orbita dai bounds già
+arrotondati e non invoca `setPosition`. Un core realmente spostato o una finestra
+ricreata richiedono un nuovo layout. Anche allora non viene invocato il setter
+se x/y coincidono. `hide()` non viene ripetuto su finestre già nascoste. Nessun
+resize forzato, modifica dei 72 richiesti o ciclo di correzione indefinito.
 
-Bounds e contenuto devono essere validi e il contenuto dentro il rettangolo
-nativo. Tutte le finestre devono stare nelle work area reali, senza collisioni.
-Dimensioni/posizioni native e di contenuto, viewport, DPR e rettangolo del
-pulsante restano identici durante hover e navigazione Tab nello stesso menu.
-Click reali del test, focus ed Escape conservano le precedenti verifiche.
+L'E2E conserva esattamente core/contenuto **120×120**, corpo **112×112**, pulsanti
+**48×48 CSS px** e raggio 50%. Verifica intento CSS grid/center, centro rispetto
+sia al viewport intero sia al rettangolo del contenitore, outline dentro il
+viewport, opacity 1, controllo abilitato e hit test. Attende le animazioni finite;
+transform ammessi a riposo: none o matrice identità esatta. Keyframe e tempi
+190/225/150 ms sono invariati.
 
-Sono registrati separatamente richiesta, bounds, content bounds, min/max,
-resizable, zoom, scala del display, DPR e viewport di ogni finestra, associati
-con ID numerico. Su Windows `physicalBounds` è la conversione Electron
-`screen.dipToScreenRect`, **non una misura indipendente dell'HWND**. Non si deduce
-la causa DPI dal solo rapporto fra questi valori. Il controller e il CSS già
-usavano bounds/viewport effettivi: questo follow-up non modifica codice applicativo,
-preload o sicurezza; corregge la premessa dell'E2E e rende persistente l'evidenza.
+La sola centratura visiva è verificata in pixel fisici: per ciascun asse,
+`abs(posizione * DPR - (estensione - 48) * DPR / 2) <= 0,5`.
+Mezzo pixel è l'errore massimo dell'arrotondamento al pixel più vicino: il limite
+in CSS varia con DPR (0,5 / DPR), non è un epsilon DIP scelto per il test fallito.
+Con DPR 1,25 il dato del proprietario 13,199999809 anziché 13 differisce di circa
+0,25 pixel fisici. Questo criterio non attribuisce la causa del dato al raster:
+impone un limite visivo e conserva la verifica separata dell'intento del layout.
+Dimensione, forma, clipping e collisioni non ricevono tolleranze.
+
+**Cinque cicli consecutivi**: clic destro → hover → chiusura → Maiusc+F10 →
+Tab/Home/End e cambio focus → Escape. Tutte le dieci aperture devono avere gli
+stessi ID e bounds, content bounds, min/max effettivi, zoom, viewport/DPR e
+rettangoli CSS della prima. Qualunque crescita nativa continua a fallire anche
+se il centro rientra nel mezzo pixel fisico. Restano controlli su work area,
+collisioni, bridge isolati, sessione/bozza, minimizzazione, drag e recupero.
+
+Sono registrati separatamente richiesta, bounds/content, min/max, resizable,
+zoom, scala display, DPR/viewport e contenitore CSS. `physicalBounds` è la
+conversione Electron `screen.dipToScreenRect`, non una misura indipendente HWND.
+Il probe solo test registra sequenza, fase before/after/event, operazione e ID
+per hide, setPosition, setBounds, showInactive, focus e move/moved/resize/show/
+hide/focus/blur. Delega sempre agli originali e ripristina wrapper/listener al
+termine. Non espone nuove API ai renderer o modifica IPC/preload.
+
+I campioni `operations` permettono di confrontare la prima variazione di bounds,
+contenuto o vincoli: una modifica dopo setPosition e prima di showInactive è un
+riscontro diverso da una variazione al solo show o focus. La crescita osservata
+nei vecchi campioni non prova da sola la specifica chiamata: leggere la nuova
+traccia, senza assumere che focus o show siano innocui.
 
 ## Menu e tastiera
 
@@ -132,7 +159,7 @@ in caricamento. Nessuna richiesta AI, login, voce, merge o release.
 ## PowerShell e verifica Windows
 
 Chiudere prima altre istanze NEYDRA per non contendere il single-instance lock.
-Da checkout pulito, fermarsi al primo exit code non zero:
+Preservare prima i JSON precedenti. Fermarsi al primo exit code non zero nei controlli:
 
 ```powershell
 cd D:\WORK\NEYDRA
@@ -146,8 +173,10 @@ npm.cmd run typecheck
 npm.cmd test
 npm.cmd run build
 npm.cmd run check:preload
-npm.cmd run test:desktop
-npm.cmd start
+# Output nuovo: non cancella i risultati delle prove precedenti.
+$orbitOutput = "test-results/orbit-drift-" + [guid]::NewGuid().ToString("N")
+npm.cmd run test:desktop --workspace @neydra/desktop -- "--output=$orbitOutput"
+# Solo dopo 2/2 PASS: npm.cmd start per la prova fisica.
 ```
 
 Nessun login o invio AI. I tre preload sono controllati da `check:preload`. L'E2E
@@ -185,7 +214,8 @@ anche se il launch fallisce prima di attraversare il `catch`. Usa
 il JSON UTF-8 e solo dopo allega **il path** al test. Reporter `list` invariato.
 
 Percorso dal repository:
-`apps/desktop/test-results/<directory-test-companion>/companion-v2-geometry.json`.
+`apps/desktop/test-results/<output-facoltativo>/<directory-test-companion>/companion-v2-geometry.json`.
+Senza `--output` manca il livello facoltativo.
 Playwright può creare anche una copia sotto `attachments/`. Recuperare il file
 **prima di rieseguire Playwright**, che pulisce il proprio output a inizio run.
 Nessun codice aggiunto cancella screenshot o altri file del proprietario.
@@ -199,7 +229,7 @@ Get-ChildItem .\apps\desktop\test-results -Recurse -File -Filter companion-v2-ge
 
 Un file `[]` significa che il processo non ha consentito alcuna misura, ad
 esempio per un errore di launch; non è un PASS geometrico. I fallimenti dopo
-l'apertura conservano i campioni delle fasi e l'ultima raccolta disponibile.
+l'apertura conservano i campioni delle fasi, le operazioni native e l'ultima raccolta disponibile.
 Si raccolgono solo geometria e dati tecnici fissi: nessun testo chat, input,
 credenziale, token, URL, errore grezzo o screenshot del desktop.
 

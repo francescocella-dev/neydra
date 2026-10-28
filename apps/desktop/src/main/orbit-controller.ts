@@ -53,6 +53,7 @@ export class OrbitController {
   private opened = false;
   private disposed = false;
   private selected: OrbitRole = 'open';
+  private placementCore: Rect | undefined;
   constructor(private readonly core: () => Rect | undefined, private readonly areas: () => Rect[],
     private readonly create: (role: OrbitRole) => Promise<Satellite>, private readonly changed: (open: boolean) => void,
     private readonly focusCore: () => void, private readonly restore: () => void, private readonly quit: () => void) {}
@@ -72,6 +73,7 @@ export class OrbitController {
       for (const role of ['open', 'exit'] as const) {
         let window = this.windows.get(role);
         if (!window || window.isDestroyed()) {
+          this.placementCore = undefined;
           window = await this.create(role);
           if (this.disposed || epoch !== this.epoch) { if (!window.isDestroyed()) window.destroy(); return { ok: false, code: 'unavailable' }; }
           this.windows.set(role, window);
@@ -82,18 +84,30 @@ export class OrbitController {
       if (epoch !== this.epoch || !this.core()) throw new Error('Menu cancelled');
       // Native minima and a move to another DPI can change the requested size.
       // Measure after loading, then again after positioning. At most one replan.
-      let fitted = false;
-      for (let attempt = 0; attempt < 2; ++attempt) {
+      const previous = this.bounds();
+      // Preserve an already valid native placement. Re-deriving it from rounded
+      // dimensions can move it by one DIP; even a no-op native move can perform
+      // another DIP/physical-pixel round trip on Windows. Core changes still
+      // require a fresh orbital layout.
+      const anchor = this.placementCore, currentCore = this.core();
+      let fitted = !!previous && !!anchor && !!currentCore && currentCore.x === anchor.x && currentCore.y === anchor.y
+        && currentCore.width === anchor.width && currentCore.height === anchor.height && orbitFits(currentCore, this.areas(), previous);
+      for (let attempt = 0; !fitted && attempt < 2; ++attempt) {
         const core = this.core();
         if (!core) throw new Error('Core unavailable');
         const boxes = this.bounds();
         const actualPositions = boxes && orbitPlacement(core, this.areas(), boxes);
         if (!actualPositions) break;
-        for (const role of ['open', 'exit'] as const) this.windows.get(role)!.setPosition(actualPositions[role].x, actualPositions[role].y);
+        for (const role of ['open', 'exit'] as const) {
+          const target = actualPositions[role], current = this.windows.get(role)!.getBounds();
+          if (current.x !== target.x || current.y !== target.y) this.windows.get(role)!.setPosition(target.x, target.y);
+        }
         const actual = this.bounds();
         if (actual && orbitFits(core, this.areas(), actual)) { fitted = true; break; }
       }
       if (!fitted) throw new Error('Native satellite bounds do not fit');
+      const placedCore = this.core();
+      this.placementCore = placedCore && { ...placedCore };
       this.opened = true;
       for (const window of this.windows.values()) {
         if (!this.opened) throw new Error('Menu closed during reveal');

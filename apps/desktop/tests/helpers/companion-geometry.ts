@@ -31,10 +31,13 @@ export async function companionGeometry(desktop: ElectronApplication) {
         const button = document.getElementById('action') as HTMLButtonElement | null;
         if (!button) return { present: false as const };
         const box = button.getBoundingClientRect(), style = getComputedStyle(button);
+        const container = button.parentElement!, layout = getComputedStyle(container), containerBox = container.getBoundingClientRect();
         const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
         return { present: true as const, width: box.width, height: box.height, x: box.x, y: box.y, radius: style.borderRadius,
           transform: style.transform, opacity: style.opacity, disabled: button.disabled, hit: hit === button || button.contains(hit),
           outlineWidth: parseFloat(style.outlineWidth), outlineOffset: parseFloat(style.outlineOffset),
+          layout: { x: containerBox.x, y: containerBox.y, width: containerBox.width, height: containerBox.height,
+            display: layout.display, align: layout.alignItems, justify: layout.justifyItems },
           dpr: devicePixelRatio, viewport: { width: innerWidth, height: innerHeight } };
       });
       return { id, ...renderer };
@@ -44,6 +47,14 @@ export async function companionGeometry(desktop: ElectronApplication) {
 }
 
 export type CompanionGeometry = Awaited<ReturnType<typeof companionGeometry>>;
+
+// CSS geometry can be reported between physical pixel centers at fractional DPR.
+// Nearest-pixel quantization contributes at most 1/2 physical pixel per axis.
+// This is a physical bound, not a DIP allowance, and never excuses native growth.
+export function physicallyCentered(position: number, size: number, extent: number, dpr: number): boolean {
+  return [position, size, extent, dpr].every(Number.isFinite) && dpr > 0 && size > 0 && extent > 0
+    && Math.abs(position * dpr - (extent - size) * dpr / 2) <= 0.5;
+}
 
 // Native bounds/content use OS-rounded DIP, viewport/controls use CSS pixels.
 // Never infer an exact native size or viewport from the requested 72 DIP.
@@ -70,7 +81,11 @@ export function satelliteGeometryProblems(snapshot: CompanionGeometry): string[]
     if (![viewport.width, viewport.height, x, y, width, height, renderer.dpr, renderer.outlineWidth, renderer.outlineOffset].every(Number.isFinite)
       || viewport.width <= 0 || viewport.height <= 0 || renderer.dpr <= 0) problems.push(`${prefix}: invalid-renderer`);
     if (width !== 48 || height !== 48 || renderer.radius !== '50%' || !['none', 'matrix(1, 0, 0, 1, 0, 0)'].includes(renderer.transform)) problems.push(`${prefix}: circle`);
-    if (x !== (viewport.width - 48) / 2 || y !== (viewport.height - 48) / 2) problems.push(`${prefix}: center`);
+    if (renderer.layout.display !== 'grid' || renderer.layout.align !== 'center' || renderer.layout.justify !== 'center'
+      || renderer.layout.x !== 0 || renderer.layout.y !== 0) problems.push(`${prefix}: layout-intent`);
+    if (!physicallyCentered(x, width, viewport.width, renderer.dpr) || !physicallyCentered(y, height, viewport.height, renderer.dpr)
+      || !physicallyCentered(x - renderer.layout.x, width, renderer.layout.width, renderer.dpr)
+      || !physicallyCentered(y - renderer.layout.y, height, renderer.layout.height, renderer.dpr)) problems.push(`${prefix}: center`);
     const outline = Math.max(0, renderer.outlineWidth + renderer.outlineOffset);
     if (x - outline < 0 || y - outline < 0 || x + width + outline > viewport.width || y + height + outline > viewport.height) problems.push(`${prefix}: clipping`);
     if (renderer.disabled || !renderer.hit || renderer.opacity !== '1') problems.push(`${prefix}: unreachable`);
@@ -86,6 +101,7 @@ export function satelliteShape(snapshot: CompanionGeometry) {
   return snapshot.native.satellites.filter(window => window.visible).map(window => {
     const renderer = snapshot.satellites.find(renderer => renderer.id === window.id);
     return { id: window.id, bounds: { ...window.bounds }, content: { ...window.content }, scale: window.scale,
+      minimum: [...window.minimum], maximum: [...window.maximum], zoom: window.zoom, resizable: window.resizable,
       renderer: renderer?.present ? { x: renderer.x, y: renderer.y, width: renderer.width, height: renderer.height,
         viewport: { ...renderer.viewport }, dpr: renderer.dpr } : undefined };
   }).sort((a, b) => a.id - b.id);

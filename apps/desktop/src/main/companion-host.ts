@@ -96,7 +96,7 @@ export function createCompanionHost(main: BrowserWindow) {
         window.setIgnoreMouseEvents(true); // Fading controls cannot intercept or execute clicks.
         window.webContents.send(ORBIT_EVENT, 'conceal');
         if (animate && window.isVisible()) entry.timer = setTimeout(() => { if (!window.isDestroyed()) window.hide(); }, 150);
-        else window.hide();
+        else if (window.isVisible()) window.hide();
       },
     };
     return port;

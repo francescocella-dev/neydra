@@ -1,6 +1,6 @@
 # Companion V2 — report di verifica
 
-> Follow-up corrente: [geometria DPI e JSON persistente](#follow-up-windows-dpi-e-json-persistente).
+> Follow-up corrente: [riuso senza drift e probe nativo](#follow-up-windows-riuso-senza-drift).
 > La precedente sezione 72 DIP conserva il report storico e le asserzioni poi corrette.
 > Gli esiti delle sezioni iniziali descrivono il candidato V2 originale.
 
@@ -334,3 +334,164 @@ Ripetere a Windows 100%, 125%, 150%, bordi/taskbar e monitor diversi/negativi;
 confrontare richiesta, bounds/content, viewport, scala/DPR, stabilità e controlli
 cliccabili. Se fallisce conservare il JSON prima di ripetere, insieme a SHA ed
 esiti osservati. La causa OS resta da stabilire dalle misure. Nessun login o invio AI.
+
+
+## Follow-up Windows: riuso senza drift
+
+29 ottobre 2026. Baseline pubblicata `b7385921ad1a10d8a252cbb949f016ec1ab430df`,
+PR #10 DRAFT. Dopo la disconnessione dell'exec-server l'ambiente è tornato
+operativo: HEAD e diff controllati prima di modificare. Recuperati quattro file
+modificati e l'helper nativo non tracciato; nessun reset/clean o sovrascrittura di
+altri lavori. I test non applicati nella sessione interrotta sono stati completati.
+
+### Evidenza e limite della diagnosi
+
+Il proprietario ha verificato **135/135 unit, check/lint/typecheck/build, tre
+preload ed E2E immersivo PASS** su b738592; companion FAIL alla riapertura da
+tastiera. Il [commento con le misure reali](https://github.com/francescocella-dev/neydra/pull/10#issuecomment-6483045003)
+registra Electron 45.1.0, DPR/scala 1,25, work area 1536×816:
+
+| Fase | Satellite 3 | Satellite 4 | Pulsanti CSS |
+| --- | --- | --- | --- |
+| Prima apertura/hover | native 73×72; contenuto/viewport 72×72; min/max 72×72 | native 72×73; contenuto/viewport 72×72; min/max 72×72 | 48×48 a (12,12), hit e forma corretti |
+| Chiusura | invariato e nascosto | invariato e nascosto | disabilitati/opacity 0 |
+| Riapertura tastiera | native/contenuto/viewport 74×72; min/max 73×72 | native/contenuto/viewport 72×74; min/max 72×73 | 48×48, asse lungo a 13,199999809 anziché 13 |
+
+La crescita nativa è reale; lo scostamento CSS è circa 0,25 pixel fisici ed è un
+problema distinto. Il core resta esattamente 120×120, corpo 112×112.
+
+Riscontro nel sorgente **v45.1.0**, non soltanto nella issue storica:
+
+- [NativeWindow::SetPosition](https://github.com/electron/electron/blob/v45.1.0/shell/browser/native_window.cc)
+  chiama `SetBounds(gfx::Rect(position, GetSize()), animate)`, usando la dimensione
+  misurata e senza una guardia per coordinate identiche.
+- [NativeWindowViews::SetBounds](https://github.com/electron/electron/blob/v45.1.0/shell/browser/native_window_views.cc)
+  aggiorna `SetMaximumSize(bounds.size())` e `SetMinimumSize(bounds.size())` su
+  Windows/Linux se `!CanResize()`, poi applica i bounds al widget.
+
+L'app richiamava setPosition a ogni apertura. Rimandare il 73 misurato al setter
+spiega perché i getter dei vincoli possano diventare 73 al giro successivo: è un
+percorso di feedback concreto nel codice. **Manca però ancora la misura Windows
+before/after della singola operazione** per attribuire definitivamente il 74 a
+setPosition e non a show/focus o a un evento differito. Nessun mock o prova Linux
+può certificare quell'attribuzione su Windows.
+
+### Correzione del runtime
+
+- Core invariato e richiesta satelliti ancora **72×72**, min/max constructor 72.
+- Se il core è invariato e i bounds reali precedenti rispettano work area e
+  separazione, la coppia viene riutilizzata senza ricalcolare/reinviare posizioni.
+  Una dimensione arrotondata non innesca un nuovo centramento orbitale ad ogni apertura.
+- Nuovo layout per core spostato, finestra ricreata o geometria non valida. Anche
+  allora il setter viene saltato per x/y già uguali al target. Cache invalidata
+  sulla ricreazione, work area rivalidata sempre, massimo un ricalcolo come prima.
+- `hide()` non ripetuto sui satelliti già nascosti. Show/focus e controlli nativi
+  di sicurezza restano attivi; nessun setSize/setBounds correttivo o retry infinito.
+- CSS del solo orbit passa a grid pieno viewport con place-items:center. Cerchi
+  48, icone, target, outline, keyframe e tempi premium restano invariati.
+
+### Contratto CSS e anti-drift
+
+Il layout deve dichiarare grid/center e il controllo deve restare 48×48 con
+raggio 50%, senza scale/traslazioni residue. Il centro è confrontato sia col
+viewport integer sia col rettangolo CSS del contenitore raccolto separatamente.
+L'errore per asse è espresso in pixel fisici:
+`abs(posizione * DPR - (estensione - 48) * DPR / 2) <= 0,5`.
+È il limite dell'arrotondamento al pixel più vicino, non ±1 DIP o un epsilon
+scelto sul campione. Il calcolo è fatto direttamente nello spazio fisico per
+non introdurre cancellazioni numeriche aggiungendo prima metà del diametro.
+Il dato reale +0,199999809 CSS a DPR 1,25 rientra in circa 0,25 pixel fisici.
+Questo non dimostra la causa raster del dato: è una proprietà di centratura
+visiva, insieme al controllo separato dell'intento CSS. Nessuna tolleranza a
+forma/dimensione, clipping, bounds, collisioni, work area o crescita nel tempo.
+
+L'E2E esegue **cinque cicli** clic destro/chiusura/Maiusc+F10/Tab/Home/End/Escape:
+dieci aperture sulle stesse finestre. Native/content bounds, min/max, zoom,
+viewport/DPR e rect CSS sono confrontati **esattamente con la prima apertura**.
+La crescita di un solo DIP continua a fallire anche se il centro è visivamente
+accettabile. Focus e ritorno al core, hit, hover senza azioni, animazioni finite,
+bridge isolati, sessione/bozza, minimizzazione/F11 e recupero sono conservati.
+
+### Probe esclusivamente nei test
+
+`tests/helpers/orbit-native-probe.ts` osserva prima/dopo hide, setPosition,
+setBounds, showInactive e focus; eventi move/moved/resize/show/hide/focus/blur.
+Per ID registra sequenza, target numerico del move, bounds/content, min/max,
+scala, conversione DIP→pixel, visibilità e focus. I metodi originali vengono
+chiamati con lo stesso this/argomenti/ritorno. Wrapper/listener sono rimossi alla
+fine. Nessun IPC o hook diagnostico nel prodotto, nessun URL/testo/account/token/
+header/errore grezzo/screenshot desktop nel JSON.
+
+Le operazioni vengono drenate nei campioni di fase e nel finally, prima del
+teardown che salva il JSON persistente. Il test unitario del probe verifica
+prima/dopo, eventi, delega, filtro dei dati e ripristino dei descrittori originali.
+Se Windows fallisce ancora, la prima variazione nei record before/after/event
+consentirà di distinguere setPosition, hide/show e focus. L'assenza di un ulteriore
+move nel percorso corretto non è da sola prova retroattiva della causa OS.
+
+### Verifiche effettive
+
+| Controllo | Esito osservato |
+| --- | --- |
+| check, lint zero warning, typecheck | PASS |
+| suite offline | **142/142 PASS, 16 file, zero skip** |
+| regressioni mirate controller/host/geometria/probe | **28/28 PASS** |
+| build e tre preload strutturali | PASS (VM mock, non prova sandbox Windows) |
+| persistenza JSON con reporter list | PASS nel subprocess sintetico e nel FAIL Electron reale |
+| Electron E2E dopo build | **2 BLOCKED prima della prima finestra**, SUID Linux / SIGTRAP |
+| Nuova GUI Windows, cinque cicli reali e causa OS esatta | **NON ESEGUITI qui** |
+
+La suite sintetica verifica DPR 1/1,25/1,5 e viewport 72×72, 74×72, 72×74, 73×72,
+limite esatto mezzo pixel e rifiuto oltre il limite; verifica separatamente che
+la crescita nativa continui a fallire. Il controller è provato con un modello
+che aggiunge un DIP a ogni move: cinque cicli misti conservano bounds e una sola
+chiamata per il posizionamento iniziale. **È un modello di regressione, non una
+riproduzione Windows né una misura reale del raster CSS.** Provati anche setter
+identici saltati, ricollocazione dopo cambio core, work area e finestre ricreate.
+
+E2E tentato da apps/desktop con
+`DEBUG=pw:browser npm run test:desktop -- --output=test-results/cloud-orbit-drift-1793229973338`.
+Sandbox sempre attivo. Entrambi falliscono prima delle finestre con
+`setuid_sandbox_host.cc:172`. Il JSON autonomo realmente verificato è
+`apps/desktop/test-results/cloud-orbit-drift-1793229973338/companion.e2e.ts-companion-6323a-menu-and-session-continuity/companion-v2-geometry.json`,
+contenuto `[]` e copia attachments. Nessuna protezione aggirata, nessuna nuova
+misura GUI. La cartella di output dedicata evita di riutilizzare l'output standard.
+
+Diff applicativo limitato a orbit-controller, una guardia hide in companion-host
+e CSS orbit. Interfaccia immersiva, core, F11, ChatGPT/OAuth/Responses/consenso,
+preload/IPC/CSP/sandbox, asset Mini/Blender/Holo/voce e dipendenze invariati.
+Nessun git clean/reset, cancellazione di asset/file personali, login, invio AI,
+merge o release. PR #10 resta DRAFT, nuovo commit solo dopo i controlli disponibili.
+
+### Windows: nuovo candidato e raccolta
+
+Preservare la diagnostica già fornita. Chiudere NEYDRA, aggiornare il branch senza
+reset/clean, verificare SHA e fermarsi al primo errore nei controlli:
+
+```powershell
+cd D:\WORK\NEYDRA
+git status --short
+git switch feat/desktop-mini-interface
+git pull --ff-only origin feat/desktop-mini-interface
+git rev-parse HEAD
+npm.cmd run check
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
+npm.cmd run check:preload
+$orbitOutput = "test-results/orbit-drift-" + [guid]::NewGuid().ToString("N")
+npm.cmd run test:desktop --workspace @neydra/desktop -- "--output=$orbitOutput"
+Get-ChildItem .\apps\desktop\test-results -Recurse -File -Filter companion-v2-geometry.json |
+  Select-Object FullName, Length
+```
+
+Il comando workspace inoltra le opzioni direttamente a Playwright; l'output UUID
+conserva gli altri risultati. Per isolare companion usare lo stesso comando con
+`--grep "companion lifecycle V2"`. Su FAIL condividere il nuovo JSON e SHA: cercare
+per ID la prima variazione fra before/after/event di bounds/content/min/max.
+Non cambiare asserzioni o dimensioni e non ripetere prima di conservare il file.
+Su 2/2 PASS verificare manualmente a 100/125/150%, bordi/taskbar/monitor negativi:
+minimize/fullscreen/F11, cinque aperture ripetute, drag fisico, focus, Escape e
+Apri/Esci, stessa bozza/sessione. Nessun login o invio AI. **Il PASS Windows e la
+causa OS esatta restano gate del proprietario, non risultati del cloud.**

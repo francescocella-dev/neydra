@@ -137,3 +137,60 @@ it('fits the observed 72x73 Windows bounds at edges and corners using the full m
     for (const box of Object.values(placement!)) expect(box).toMatchObject({ width: 72, height: 73 });
   }
 });
+
+it('reuses valid native placements for five mouse/keyboard cycles without repeated DIP size feedback', async () => {
+  for (const scale of [1, 1.25, 1.5]) {
+    const f = fixture(), open = satelliteFixture(), exit = satelliteFixture();
+    for (const [window, axis] of [[open, 'width'], [exit, 'height']] as const) {
+      const move = window.setPosition.getMockImplementation()!;
+      // Model the native feedback documented by Electron's SetPosition ->
+      // SetBounds path. This is a synthetic susceptibility, not a Windows proof.
+      window.setPosition.mockImplementation((x, y) => {
+        move(x, y);
+        if (scale !== 1) {
+          const box = window.getBounds();
+          window.resize(box.width + (axis === 'width' ? 1 : 0), box.height + (axis === 'height' ? 1 : 0));
+        }
+      });
+    }
+    f.create.mockResolvedValueOnce(open).mockResolvedValueOnce(exit);
+    expect(await f.orbit.toggle(false)).toEqual({ ok: true });
+    const baseline = { open: open.getBounds(), exit: exit.getBounds() };
+    f.orbit.close();
+    for (let cycle = 0; cycle < 5; ++cycle) {
+      expect(await f.orbit.toggle(false)).toEqual({ ok: true }); f.orbit.close(true);
+      expect(await f.orbit.toggle(true)).toEqual({ ok: true });
+      f.orbit.navigate('next'); f.orbit.focused('exit'); f.orbit.navigate('first'); f.orbit.navigate('last');
+      expect({ open: open.getBounds(), exit: exit.getBounds() }).toEqual(baseline);
+      expect(orbitFits(f.core, [{ x: 0, y: 0, width: 1024, height: 688 }], baseline)).toBe(true);
+      f.orbit.close(true, true);
+    }
+    expect(open.setPosition).toHaveBeenCalledOnce(); expect(exit.setPosition).toHaveBeenCalledOnce();
+    expect(f.create).toHaveBeenCalledTimes(2); expect(f.quit).not.toHaveBeenCalled(); expect(f.restore).not.toHaveBeenCalled();
+  }
+});
+it('skips identical native coordinates on first placement but replans after the core actually moves', async () => {
+  const f = fixture(), planned = orbitPlacement(f.core, [{ x: 0, y: 0, width: 1024, height: 688 }])!;
+  const open = satelliteFixture(), exit = satelliteFixture();
+  open.setPosition(planned.open.x, planned.open.y); exit.setPosition(planned.exit.x, planned.exit.y);
+  open.setPosition.mockClear(); exit.setPosition.mockClear();
+  f.create.mockResolvedValueOnce(open).mockResolvedValueOnce(exit);
+  expect(await f.orbit.toggle(false)).toEqual({ ok: true });
+  expect(open.setPosition).not.toHaveBeenCalled(); expect(exit.setPosition).not.toHaveBeenCalled();
+  f.orbit.close(); f.core.x += 100;
+  expect(await f.orbit.toggle(false)).toEqual({ ok: true });
+  expect(open.setPosition).toHaveBeenCalledOnce(); expect(exit.setPosition).toHaveBeenCalledOnce();
+});
+it('revalidates a reused pair against changed work areas and never reuses a destroyed satellite placement', async () => {
+  const core = { x: 300, y: 250, width: 120, height: 120 };
+  let areas = [{ x: 0, y: 0, width: 1024, height: 688 }];
+  const open = satelliteFixture(), exit = satelliteFixture(), next = satelliteFixture();
+  const create = vi.fn().mockResolvedValueOnce(open).mockResolvedValueOnce(exit).mockResolvedValueOnce(next);
+  const orbit = new OrbitController(() => core, () => areas, create, vi.fn(), vi.fn(), vi.fn(), vi.fn());
+  await orbit.toggle(false); orbit.close();
+  open.isDestroyed.mockReturnValue(true);
+  expect(await orbit.toggle(false)).toEqual({ ok: true });
+  expect(next.setPosition).toHaveBeenCalledOnce(); expect(create).toHaveBeenCalledTimes(3);
+  orbit.close(); areas = [{ ...core }];
+  expect(await orbit.toggle(false)).toMatchObject({ code: 'unavailable' });
+});
