@@ -117,3 +117,44 @@ Main remoto è rimasto `92d4793`; le teste delle PR #6/#7 lette sono rimaste
 Rischi e hand-off completi: [DESKTOP.md](../../../docs/DESKTOP.md).
 Prossimo gate: seguire il runbook PowerShell, eseguire smoke e prova manuale sul
 PC Windows; solo successivamente procedere con integrazioni separate e review.
+
+
+## Primo smoke su Windows, riportato dal proprietario (28 ottobre 2026)
+
+Il proprietario ha eseguito dalla root del branch `issue-4/windows-desktop-shell`:
+
+- `npm.cmd ci`: 195 pacchetti installati, audit **0 vulnerabilità**.
+  L'avviso npm `allow-scripts` relativo a `esbuild@0.28.2` non ha
+  impedito i successivi controlli, compilazione e test. Non è stata
+  approvata indiscriminatamente l'esecuzione degli script.
+- `npm.cmd run setup:electron`: eseguito senza errori.
+- `npm.cmd run check`, `lint`, `typecheck`: **PASS**.
+- `npm.cmd test`: **17/17 PASS** (3 file).
+- `npm.cmd run build`: **PASS** (main/preload/renderer).
+- `npm.cmd run check:preload`: **PASS** (VM mock).
+- `npm.cmd run test:desktop`: **1 FAIL** dopo circa 15 secondi, durante
+  l'asserzione di blocco della navigazione esterna. La verifica precedente
+  di bridge, isolamento, demo offline, annullamento/Esc, popup, permessi e
+  rete è stata superata fino al punto di errore.
+
+Dettaglio: la prova imposta nel renderer
+`location.href = 'https://example.org'`; subito dopo,
+`expect(page).toHaveURL('app://desktop/index.html')` ha osservato
+`Received: ""` fino al timeout di 5 secondi. Non è provato dai dati
+disponibili se questo sia uno stato transitorio del frame Playwright o
+una navigazione che ha lasciato il renderer inutilizzabile.
+
+### Correzione del test, NON del sandbox
+
+Al commit `59192c2` è stata modificata **soltanto** la verifica E2E:
+dopo il tentativo di navigazione, controlla il valore
+`BrowserWindow.webContents.getURL()` dal processo principale Electron
+e richiede inoltre che il renderer originale mantenga sia il pulsante
+offline funzionante sia la preferenza Mini precedentemente selezionata.
+Non si considera un URL vuoto prova di sicurezza: se il renderer viene
+sostituito, gli ultimi controlli devono fallire. Sandbox, CSP, blocklist
+di navigazione, IPC, dipendenze e app runtime sono invariati.
+
+**La suite E2E non è stata ancora rieseguita sul PC Windows dopo il
+commit**. Lo smoke completo e la prova manuale restano da convalidare.
+Nessun test OAuth, modello AI, asset 3D o microfono viene attivato.
