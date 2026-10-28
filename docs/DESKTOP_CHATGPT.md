@@ -109,6 +109,33 @@ invio al modello. Riportare esclusivamente la riga UI
 `fase / codice / HTTP`, non screenshot di account, URL OAuth
 o dettagli del token. Nessun retry automatico, merge o rilascio.
 
+## Catalogo modelli troppo grande: `model-catalog / oversized_json` (28 ottobre 2026)
+
+L'ultima prova reale del proprietario ha confermato che OAuth/callback,
+token e identità sono stati superati; il pannello mostrava
+`Connessione interrotta: fase model-catalog, codice oversized_json`.
+Il codice prima limitava `/v1/models` allo stesso tetto dei token
+(256 KiB). Si tratta di un limite **locale**, non di una negazione
+dell'account o di un errore del browser.
+
+Correzione: **solo il catalogo** usa un tetto in memoria di 8 MiB,
+con rifiuto oltre tale soglia, massimo 512 voci, filtri
+`visibility:list` e campi `slug/display_name` limitati.
+I token, la verifica dell'identità, i permessi, gli error body
+e gli stream SSE mantengono tutte le restrizioni precedenti.
+La soglia di 8 MiB è una scelta cautelativa locale e **non**
+un valore ufficialmente garantito dall'API. Se il catalogo supera
+ancora questo limite, non aggirarlo e non continuare per tentativi.
+
+Test sintetici: catalogo >256 KiB correttamente letto; body
+>8 MiB respinto, >512 elementi respinti, body token >256 KiB respinto.
+Nessun login o modello reale interrogato da Codex per la correzione.
+**Verifica Windows nuova ancora pendente**: chiudere l'app,
+`git pull --ff-only origin feat/desktop-chatgpt-plan`,
+eseguire `check`, `lint`, `typecheck`, `test`, `build`,
+`check:preload`, `test:desktop`. Solo dopo, il proprietario
+deciderà se ripetere **un singolo login senza richiesta AI**.
+
 ## Confini implementati
 
 - Main: registra host/client emesso e subject verificato; avvia il listener
