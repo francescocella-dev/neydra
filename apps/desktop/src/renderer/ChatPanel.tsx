@@ -16,12 +16,13 @@ export function ChatPanel() {
   const mounted = useRef(true);
   const [submitted, setSubmitted] = useState('');
 
-  async function refresh() {
+  async function refresh(): Promise<Connection> {
     const value = await window.neydra.getConnection();
     if (mounted.current) {
       setConnection(value);
       setModel(current => value.models.some(model => model.slug === current) ? current : '');
     }
+    return value;
   }
   useEffect(() => {
     mounted.current = true;
@@ -52,8 +53,12 @@ export function ChatPanel() {
     setNotice('Autorizza nel browser di sistema. Nessuna inferenza al collegamento.');
     try {
       const result = await window.neydra.connectChatGPT({ consent: 'system-browser' });
-      if (mounted.current) setNotice(result.ok ? 'Connessione verificata. Scegli un modello.' : 'Connessione non riuscita o annullata. Nessun retry automatico.');
-      await refresh();
+      const updated = await refresh();
+      if (mounted.current) setNotice(result.ok
+        ? 'Connessione verificata. Scegli un modello.'
+        : updated.diagnostic
+          ? `Connessione interrotta: fase ${updated.diagnostic.phase}, codice ${updated.diagnostic.code}${updated.diagnostic.httpStatus ? `, HTTP ${updated.diagnostic.httpStatus}` : ''}. Nessun retry automatico.`
+          : 'Connessione non riuscita o annullata. Nessun retry automatico.');
     } catch { if (mounted.current) { setNotice('Connessione non disponibile.'); setConnection(disconnected); } }
     finally { lock.current = false; }
   }
