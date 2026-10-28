@@ -31,17 +31,6 @@ test('real Electron bridge, security, offline stream, interruption and reload', 
     expect(await page.evaluate(async () => (await navigator.permissions.query({ name: 'microphone' as PermissionName })).state)).toBe('denied');
     await page.evaluate(() => { window.open('https://example.org'); });
     expect(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
-    await page.evaluate(() => { location.href = 'https://example.org'; });
-    // A cancelled top-level navigation can leave Playwright's page URL empty
-    // while Chromium is resolving the provisional navigation. Verify the
-    // trusted Electron main-frame URL AND the original renderer are intact;
-    // do not weaken navigation blocking or accept a blank replacement page.
-    await expect.poll(() => desktop.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0]?.webContents.getURL() ?? ''),
-    { message: 'Electron main frame must remain at the trusted app URL' })
-      .toBe('app://desktop/index.html');
-    await expect(page.getByRole('button', { name: 'Avvia demo offline' })).toBeEnabled();
-    await expect(page.getByLabel('Preferenza avatar futura')).toHaveValue('mini');
     await page.getByRole('button', { name: 'Avvia demo offline' }).click();
     await page.reload();
     await expect(page.getByRole('button', { name: 'Avvia demo offline' })).toBeEnabled();
@@ -53,5 +42,31 @@ test('real Electron bridge, security, offline stream, interruption and reload', 
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.screenshot({ path: 'evidence/desktop-narrow.png' });
     expect(errors).toEqual([]);
+
+    // Test a real renderer-initiated navigation LAST: Chromium can keep
+    // Playwright's Page lifecycle in a provisional-navigation state after
+    // Electron cancels it. Page locators beyond this point would wait for
+    // navigation to finish even when Electron has retained the trusted URL.
+    // Do not fake the navigation event or relax any production security rule.
+    const navigation = await desktop.evaluate(({ BrowserWindow }) => {
+      const contents = BrowserWindow.getAllWindows()[0].webContents;
+      return new Promise<{ url: string; prevented: boolean } | null>(resolve => {
+        const timer = setTimeout(() => resolve(null), 3_000);
+        contents.once('will-frame-navigate', details => {
+          clearTimeout(timer);
+          resolve({ url: details.url, prevented: details.defaultPrevented });
+        });
+        // Runs as renderer JavaScript; no webContents.loadURL() shortcut.
+        // The main-process handler installed by the app must prevent it.
+        void contents.executeJavaScript("location.href = 'https://example.org'").catch(() => {});
+      });
+    });
+    expect(navigation).toEqual({ url: 'https://example.org/', prevented: true });
+    await expect.poll(() => desktop.evaluate(({ BrowserWindow }) => ({
+      windows: BrowserWindow.getAllWindows().length,
+      url: BrowserWindow.getAllWindows()[0]?.webContents.getURL() ?? '',
+      destroyed: BrowserWindow.getAllWindows()[0]?.webContents.isDestroyed() ?? true,
+    })), { message: 'Blocked navigation must not replace or destroy NEYDRA' })
+      .toEqual({ windows: 1, url: 'app://desktop/index.html', destroyed: false });
   } finally { await desktop.close(); }
 });
