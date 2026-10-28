@@ -13,6 +13,9 @@ const safeCodes = new Set<ConnectDiagnostic['code']>([
   'cancelled', 'transport_or_timeout', 'http_rejected', 'unexpected_model_catalog',
   'missing_json_body', 'oversized_json', 'invalid_host_identifier',
   'loopback_unavailable', 'no_authorized_models',
+  'subscription_sharing_user_not_eligible', 'subscription_sharing_usage_limit_exceeded',
+  'subscription_sharing_usage_unavailable', 'chatpass_v2_scope_not_authorized',
+  'chatpass_v2_invalid_authorization_context',
 ]);
 function sanitizedDiagnostic(phase: ConnectDiagnostic['phase'], error: unknown, aborted: boolean): ConnectDiagnostic {
   const code: ConnectDiagnostic['code'] = aborted ? 'cancelled'
