@@ -67,6 +67,48 @@ OAuth/inferenza reale effettuato durante la correzione.
 with ChatGPT fino al superamento dei test e a una decisione esplicita
 sul nuovo tentativo di autenticazione.
 
+
+## Callback ricevuto, app tornata disconnected: diagnosi per fase (28 ottobre 2026)
+
+Il proprietario, dopo la correzione URN e i **69/69 test Windows**, ha
+effettuato il primo nuovo sign-in reale nell'app Electron: il browser ha
+mostrato **«Autorizzazione ricevuta. Torna a NEYDRA per la verifica.»**,
+ma la GUI è passata brevemente da `connecting` a `disconnected`,
+senza catalogo di modelli. Nessuna richiesta Responses è stata inviata.
+
+**Attenzione:** il messaggio nel browser significa **callback accettato**
+dal listener locale. **Non** dimostra che il codice OAuth sia stato
+scambiato in token, che la firma dell'ID token e gli scope siano stati
+verificati o che il catalogo modelli sia stato caricato.
+
+L'implementazione precedente nascondeva ogni eccezione successiva al
+callback dietro `unavailable`, impedendo di capire il problema.
+Questa revisione aggiunge **solo diagnostica locale sanitizzata**,
+con campi chiusi e validati `phase`, `code`, e `httpStatus`
+facoltativo: `registration-load`, `listener`, `browser`,
+`callback`, `client-save`, `token-exchange`, `account-save`
+o `model-catalog`. Il campo `code` appartiene a una breve allowlist
+di codici statici; errori inattesi diventano `local_error`.
+Il renderer non riceve token, URL, error body, messaggi raw, state,
+nonce, client ID né subject. La diagnostica viene cancellata al
+nuovo tentativo, alla disconnessione e dopo l'accesso riuscito.
+
+**Test offline:** scenari sintetici per invalid grant, JWT errato,
+rifiuto catalogo, catalogo vuoto, errore storage, segreti esclusi
+e schema IPC. Non sono stati eseguiti nuovi OAuth o invii reali
+durante lo sviluppo. Non è ancora verificato quale fase abbia fallito
+nell'ultimo tentativo; i dati sensibili del callback precedente non
+vengono recuperati o riprodotti.
+
+**Procedura:** chiudere NEYDRA, aggiornare il branch della PR #9,
+eseguire `npm.cmd run check`, `lint`, `typecheck`, `test`,
+`build`, `check:preload`, `test:desktop`. Solo dopo review dei
+test e consenso per un **nuovo solo accesso**, aprire NEYDRA
+e premere `Continue with ChatGPT` una volta, senza fare alcun
+invio al modello. Riportare esclusivamente la riga UI
+`fase / codice / HTTP`, non screenshot di account, URL OAuth
+o dettagli del token. Nessun retry automatico, merge o rilascio.
+
 ## Confini implementati
 
 - Main: registra host/client emesso e subject verificato; avvia il listener
