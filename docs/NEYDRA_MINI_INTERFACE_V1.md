@@ -1,3 +1,5 @@
+> Direzione corrente: [redesign minimale immersivo](NEYDRA_MINI_MINIMAL.md), prioritario rispetto a questa versione storica.
+
 > Fase 2 corrente: [restyling Premium Tech, fullscreen nativo e runbook Windows](NEYDRA_MINI_PREMIUM_PHASE2.md). Il testo seguente conserva lo stato del primo slice; per i risultati correnti usare il report della fase 2.
 
 # NEYDRA Mini — Desktop interface v1, first UI slice

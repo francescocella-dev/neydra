@@ -1,3 +1,5 @@
+> Stato corrente: [redesign minimale immersivo e limiti delle prove GUI](MINI_MINIMAL_REPORT.md). Questo report conserva le verifiche storiche della fase 2.
+
 > Follow-up corrente: [F11 Windows: evidenza del proprietario, correzione del driver E2E e nuova diagnostica](F11_WINDOWS_REPORT.md). Le tabelle seguenti conservano gli esiti del commit iniziale della fase 2.
 
 # Mini Premium Tech — report fase 2

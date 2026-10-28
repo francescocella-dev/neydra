@@ -1,3 +1,5 @@
+> Direzione corrente: [redesign minimale immersivo](NEYDRA_MINI_MINIMAL.md), prioritario rispetto a questa versione storica.
+
 # NEYDRA Mini — Premium Tech, fase 2
 
 Candidato della **PR #10, ancora DRAFT**, branch `feat/desktop-mini-interface`.

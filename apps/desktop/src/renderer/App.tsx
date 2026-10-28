@@ -1,7 +1,8 @@
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
 import type { DesktopStatus } from '../shared/contracts';
 import { ChatPanel } from './ChatPanel';
-import { SettingsPanel } from './SettingsPanel';
+import { IconButton } from './Icon';
+import { SettingsPanel, type MenuSection } from './SettingsPanel';
 import { connectionLabel, initialChatView } from './chat-view';
 import { demoReducer, initialState } from './model';
 
@@ -10,8 +11,10 @@ export function App() {
   const [bridgeError, setBridgeError] = useState(false);
   const [chatView, setChatView] = useState(initialChatView);
   const [chatOpen, setChatOpen] = useState(true);
-  const [telemetryOpen, setTelemetryOpen] = useState(true);
+  const [telemetryOpen, setTelemetryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [menuSection, setMenuSection] = useState<MenuSection>('controls');
+  const [accountTarget, setAccountTarget] = useState<HTMLDivElement | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [windowNotice, setWindowNotice] = useState('');
@@ -46,13 +49,13 @@ export function App() {
     } catch { setWindowNotice('Schermo intero non disponibile su questa configurazione.'); }
   }
 
-  function showAccount() {
-    setSettingsOpen(false);
-    setChatOpen(true);
-    requestAnimationFrame(() => {
-      const account = document.getElementById('chat-account') as HTMLDetailsElement | null;
-      if (account) { account.open = true; account.querySelector('summary')?.focus(); account.scrollIntoView({ block: 'nearest' }); }
-    });
+  function openMenu(section: MenuSection = 'controls') {
+    setMenuSection(section);
+    setSettingsOpen(true);
+  }
+  function closeChat() {
+    setChatOpen(false);
+    requestAnimationFrame(() => document.getElementById('control-menu-button')?.focus());
   }
 
   async function stop() {
@@ -107,37 +110,34 @@ export function App() {
       </svg>
     </div>
     <header className="mini-topbar">
-      <div className="brand"><span className="brand-mark" aria-hidden="true">N</span><div><span className="brand-name">NEYDRA</span><span className="brand-caption">Il tuo spazio, con Mini</span></div></div>
-      <nav className="topbar-actions" aria-label="Comandi interfaccia">
-        <button type="button" aria-pressed={chatOpen} aria-controls="conversation-panel" onClick={() => setChatOpen(value => !value)}>{chatOpen ? 'Nascondi chat' : 'Apri chat'}</button>
-        <button type="button" aria-pressed={telemetryOpen} aria-controls="status-panel" onClick={() => setTelemetryOpen(value => !value)}>{telemetryOpen ? 'Nascondi stato' : 'Mostra stato'}</button>
-        <button type="button" className={fullscreen ? 'fullscreen-exit' : ''} onClick={() => { void toggleFullscreen(); }}>{fullscreen ? 'Esci da schermo intero' : 'Schermo intero'} <kbd>F11</kbd></button>
-        <button type="button" aria-expanded={settingsOpen} aria-controls="mini-settings" onClick={() => setSettingsOpen(true)}>Impostazioni <span aria-hidden="true">⚙</span></button>
-      </nav>
+      <div className="brand"><h1>NEYDRA</h1><span>MINI</span></div>
+      <div className="window-controls" aria-label="Comandi finestra">
+        <button type="button" className={`connection-indicator status-${connection.state}`} aria-label={`ChatGPT: ${connectionLabel[connection.state]}`} title="ChatGPT e modelli" onClick={() => openMenu('account')}><i className="state-dot" aria-hidden="true"/><span>{connectionLabel[connection.state]}</span></button>
+        <IconButton icon={fullscreen ? 'collapse' : 'expand'} label={fullscreen ? 'Esci da schermo intero' : 'Schermo intero'} hint={fullscreen ? 'Esci da schermo intero · F11' : 'Schermo intero · F11'} className={fullscreen ? 'fullscreen-exit' : ''} onClick={() => { void toggleFullscreen(); }} />
+        <IconButton id="control-menu-button" icon="menu" label="Apri menu" aria-expanded={settingsOpen} aria-controls="mini-settings" onClick={() => openMenu()} />
+      </div>
     </header>
     {windowNotice && <p className="window-notice" role="alert">{windowNotice}</p>}
     <main className={layout}>
       <section className="avatar-zone" aria-label="Area riservata a Neydra Mini">
-        <div className="stage-heading"><div><span className="eyebrow">NEYDRA</span><h1>Mini<span className="orange-point">.</span></h1></div><span className="stage-tag">Spazio personale</span></div>
-        <div className="stage-light" aria-hidden="true" />
-        <div className="stage-guide guide-top" aria-hidden="true"/><div className="stage-guide guide-bottom" aria-hidden="true"/>
-        <div className="avatar-caption"><span className="stage-indicator" aria-hidden="true"/><p>Uno spazio per Mini.<span>Il modello 3D definitivo sarà collegato qui.</span></p></div>
+        <div className="stage-light" aria-hidden="true"/><div className="stage-guide guide-top" aria-hidden="true"/><div className="stage-guide guide-bottom" aria-hidden="true"/>
+        <span className="stage-note">Modello 3D non collegato</span>
       </section>
       <section id="conversation-panel" className="conversation-zone" aria-label="Conversazione ChatGPT" hidden={!chatOpen}>
-        <header className="panel-heading"><div><span className="eyebrow">Il filo del dialogo</span><h2>Conversazione</h2></div><button type="button" className="quiet-button" aria-label="Chiudi chat" onClick={() => setChatOpen(false)}>Chiudi <span aria-hidden="true">×</span></button></header>
-        <ChatPanel onViewState={setChatView} />
+        <header className="conversation-toolbar"><h2 className="sr-only">Conversazione</h2><IconButton icon="info" label="ChatGPT, modello e dettagli" onClick={() => openMenu('account')} /><IconButton icon="close" label="Chiudi chat" onClick={closeChat} /></header>
+        <ChatPanel onViewState={setChatView} accountTarget={accountTarget} onOpenControls={() => openMenu('account')} visible={chatOpen} />
       </section>
       <aside id="status-panel" className="telemetry-zone" aria-label="Stato e utilizzo" hidden={!telemetryOpen}>
-        <header className="panel-heading"><div><span className="eyebrow">Qui e adesso</span><h2>Stato e utilizzo</h2></div><button type="button" className="quiet-button" aria-label="Chiudi pannello stato" onClick={() => setTelemetryOpen(false)}>×</button></header>
-        <div className="status-cards">
-          <section className="metric-card connection-card"><span className="metric-label">ChatGPT · ultimo stato noto</span><strong className={connection.state === 'connected' ? 'metric-connected' : ''}><i className="state-dot"/>{connectionLabel[connection.state]}</strong><p>{connection.state === 'connected' ? 'Connessione del piano autorizzata.' : 'Collega il tuo account dalle impostazioni.'}</p><button type="button" className="text-button" onClick={showAccount}>Gestisci connessione <span aria-hidden="true">↗</span></button></section>
-          <section className="metric-card"><span className="metric-label">Modello selezionato</span><strong>{selectedName || 'Da scegliere'}</strong><p>{selectedModel || (connection.state === 'connected' ? `${connection.models.length} modelli nel catalogo autorizzato` : 'Il catalogo sarà disponibile dopo l’accesso.')}</p></section>
-          <section className="metric-card"><span className="metric-label">Sessione e contesto</span><strong>{chatView.running ? 'Risposta in corso' : chatView.hasConversation ? 'Conversazione in memoria' : 'Pronto per una conversazione'}</strong><p>I turni completati restano nella sessione. Nessun archivio permanente.</p></section>
-          <section className="metric-card usage-card"><span className="metric-label">Utilizzo del piano</span><strong>Quota non disponibile</strong><p>Verifica limiti, crediti e ricarica nell’account ChatGPT prima di ogni invio. Nessuna stima locale.</p></section>
-        </div>
+        <header className="status-heading"><h2>Stato</h2><IconButton icon="close" label="Chiudi pannello stato" onClick={() => setTelemetryOpen(false)} /></header>
+        <div className="status-details" tabIndex={0}><dl>
+          <div><dt>ChatGPT · ultimo stato noto</dt><dd>{connectionLabel[connection.state]}</dd></div>
+          <div><dt>Modello</dt><dd>{selectedName || 'Da scegliere'}</dd></div>
+          <div><dt>Sessione</dt><dd>{chatView.running ? 'Risposta in corso' : chatView.hasConversation ? 'Conversazione in memoria' : 'In memoria'}</dd></div>
+          <div><dt>Quota</dt><dd>Non disponibile</dd></div>
+        </dl></div>
       </aside>
     </main>
-    <SettingsPanel open={settingsOpen} onDismiss={() => setSettingsOpen(false)} onAccount={showAccount} fullscreen={fullscreen} onFullscreen={() => { void toggleFullscreen(); }} reducedMotion={reducedMotion} onReducedMotion={setReducedMotion}>
+    <SettingsPanel open={settingsOpen} onDismiss={() => setSettingsOpen(false)} section={menuSection} onSection={setMenuSection} accountRef={setAccountTarget} chatOpen={chatOpen} onChat={() => setChatOpen(value => !value)} statusOpen={telemetryOpen} onStatus={() => setTelemetryOpen(value => !value)} fullscreen={fullscreen} onFullscreen={() => { void toggleFullscreen(); }} reducedMotion={reducedMotion} onReducedMotion={setReducedMotion}>
       <details className="developer-tools"><summary>Banco di prova offline</summary>
           <section className="demo" aria-labelledby="demo-title">
             <h3 id="demo-title">Banco di prova offline</h3>
@@ -156,6 +156,5 @@ export function App() {
 
       </details>
     </SettingsPanel>
-    <footer className="mini-footer"><span><i className="footer-dot"/> Mini · anteprima dell’interfaccia</span><span>Voce e modello 3D non ancora integrati</span></footer>
   </div>;
 }

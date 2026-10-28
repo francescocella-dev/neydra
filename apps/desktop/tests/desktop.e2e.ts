@@ -1,6 +1,7 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { assertSingleViewport } from './helpers/viewport';
 import { observeFullscreen, type FullscreenPhase } from './helpers/fullscreen-probe';
 
 test('Mini UI, native fullscreen, offline stream and Electron security', async () => {
@@ -10,41 +11,51 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
     const page = await desktop.firstWindow();
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
-    await expect(page.getByRole('heading', { name: 'Conversazione', exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Mini.' })).toBeVisible();
+    const menuButton = page.getByRole('button', { name: 'Apri menu', exact: true });
+    const settings = page.getByRole('dialog', { name: 'Pannello di controllo' });
+    const openMenu = async () => { await menuButton.click(); await expect(settings).toBeVisible(); };
+    const closeMenu = async () => { await settings.getByRole('button', { name: 'Chiudi menu' }).click(); await expect(settings).toBeHidden(); };
+    const togglePanel = async (name: string) => { await openMenu(); await settings.getByRole('button', { name, exact: true }).click(); await closeMenu(); };
+    await expect(page.getByRole('heading', { name: 'NEYDRA', exact: true })).toBeVisible();
+    await expect(page.locator('.brand')).toHaveText('NEYDRAMINI');
+    await expect(page.locator('.mini-topbar button')).toHaveCount(3);
     const prompt = page.getByLabel('Messaggio per ChatGPT (massimo 2000 caratteri)');
     await prompt.fill('Test locale: il testo deve restare dopo la chiusura.');
-    await page.getByRole('button', { name: 'Nascondi chat' }).click();
+    await assertSingleViewport(page);
+    const originalPrompt = await prompt.elementHandle();
+    if (!originalPrompt) throw new Error('Prompt missing');
+    await togglePanel('Nascondi chat');
     await expect(page.locator('.conversation-zone')).toBeHidden();
-    await page.getByRole('button', { name: 'Apri chat' }).click();
+    await togglePanel('Mostra chat');
     await expect(prompt).toHaveValue('Test locale: il testo deve restare dopo la chiusura.');
-    await page.getByRole('button', { name: 'Nascondi stato' }).click();
-    await expect(page.locator('.telemetry-zone')).toBeHidden();
-    await page.getByRole('button', { name: 'Mostra stato' }).click();
-    await expect(page.getByText('Quota non disponibile')).toBeVisible();
-    await expect(page.getByRole('button', { name: /Invia a ChatGPT/ })).toBeDisabled();
-    await expect(page.getByLabel('Modello autorizzato selezionato')).toHaveValue('');
+    expect(await originalPrompt.evaluate(element => document.getElementById('chat-prompt') === element)).toBe(true);
+    await originalPrompt.dispose();
+    await togglePanel('Mostra stato');
+    await expect(page.locator('.telemetry-zone')).toBeVisible();
+    await expect(page.locator('.telemetry-zone').getByText('Non disponibile', { exact: true })).toBeVisible();
+    await assertSingleViewport(page);
+    await togglePanel('Nascondi stato');
+    await expect(page.getByRole('button', { name: 'Invia a ChatGPT', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Voce non ancora disponibile', exact: true })).toBeDisabled();
     expect(await page.evaluate(() => window.neydra.getConnection())).toEqual({ state: 'disconnected', models: [] });
     expect(await page.evaluate(() => window.neydra.startChatGPT({ requestId: crypto.randomUUID(), prompt: 'fixture', model: 'unauthorized', consent: 'included-plan-checked' }))).toEqual({ ok: false, code: 'auth-required' });
-    await page.getByRole('button', { name: 'Impostazioni' }).click();
-    const settings = page.getByRole('dialog', { name: 'Impostazioni' });
+    await menuButton.focus();
+    await expect(page.getByRole('tooltip', { name: 'Apri menu', exact: true })).toBeVisible();
+    await page.keyboard.press('Enter');
     await expect(settings).toBeVisible();
     await page.keyboard.press('Tab');
     expect(await page.evaluate(() => document.getElementById('mini-settings')?.contains(document.activeElement))).toBe(true);
-    await settings.getByRole('button', { name: 'Tema e aspetto' }).click();
+    await settings.getByRole('button', { name: 'ChatGPT e modelli', exact: true }).click();
+    await expect(settings.getByRole('button', { name: 'Continue with ChatGPT' })).toBeVisible();
+    await expect(settings.getByLabel('Modello autorizzato selezionato')).toHaveValue('');
+    await expect(settings.getByLabel('Modello autorizzato selezionato')).toBeDisabled();
+    await settings.getByRole('button', { name: 'Tema e aspetto', exact: true }).click();
     await settings.getByLabel('Riduci le animazioni di sfondo').check();
     expect(await page.locator('.energy-one').evaluate(element => getComputedStyle(element).animationName)).toBe('none');
-    await settings.getByRole('button', { name: 'Voce e ascolto' }).click();
-    await expect(settings.getByText('Non implementata')).toBeVisible();
-    await settings.getByRole('button', { name: 'ChatGPT e modelli' }).click();
-    await settings.getByRole('button', { name: 'Apri accesso ChatGPT' }).click();
-    await expect(settings).toBeHidden();
-    await expect(page.getByRole('button', { name: 'Continue with ChatGPT' })).toBeVisible();
-    // Do not click sign-in or send a real model request.
-    await page.locator('#chat-account > summary').click();
-    await page.getByRole('button', { name: 'Impostazioni' }).click();
+    await settings.getByRole('button', { name: 'Impostazioni', exact: true }).click();
+    await expect(settings.getByText(/Voce non ancora disponibile/)).toBeVisible();
     await settings.getByRole('button', { name: 'Informazioni e strumenti tecnici' }).click();
-    await settings.getByText('Banco di prova offline', { exact: true }).first().click();
+    await settings.locator('.developer-tools > summary').click();
     await expect(page.getByRole('button', { name: 'Avvia demo offline' })).toBeEnabled();
     expect(await desktop.evaluate(({ app }) => app.commandLine.hasSwitch('no-sandbox'))).toBe(false);
     expect(await page.evaluate(() => ({ require: typeof Reflect.get(window, 'require'), process: typeof Reflect.get(window, 'process'), keys: Object.keys(window.neydra).sort() })))
@@ -59,10 +70,10 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
     await page.getByRole('button', { name: 'Avvia demo offline' }).click();
     await page.keyboard.press('Escape');
     await expect(settings).toBeHidden();
-    await expect(page.getByRole('button', { name: 'Impostazioni' })).toBeFocused();
-    await page.getByRole('button', { name: 'Impostazioni' }).click();
+    await expect(menuButton).toBeFocused();
+    await openMenu();
     await expect(page.getByRole('status')).toHaveText('Demo offline annullata');
-    await settings.getByRole('button', { name: 'Chiudi impostazioni' }).click();
+    await closeMenu();
     expect(await page.evaluate(async () => {
       try { await fetch('https://example.org'); return 'allowed'; } catch { return 'blocked'; }
     })).toBe('blocked');
@@ -99,6 +110,7 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
     try {
       await page.getByRole('button', { name: /^Schermo intero/ }).click();
       await assertTransition('button-enter', true, false);
+      await assertSingleViewport(page);
       await expect(page.getByRole('button', { name: /^Esci da schermo intero/ })).toBeVisible();
       expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true);
       await pressNativeF11('f11-exit', false);
@@ -108,6 +120,7 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
       await fullscreenProbe.evaluate(probe => probe.begin('button-exit'));
       await page.getByRole('button', { name: /^Esci da schermo intero/ }).click();
       await assertTransition('button-exit', false, false);
+      await assertSingleViewport(page);
       expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true);
     } finally {
       try {
@@ -120,21 +133,39 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
     }
 
     await page.reload();
-    await expect(page.getByRole('heading', { name: 'Conversazione', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Conversazione ChatGPT' })).toBeVisible();
     expect(await page.evaluate(async () => {
       const fonts = await Promise.all([document.fonts.load('16px Manrope'), document.fonts.load('24px Oxanium')]);
       return fonts.map(faces => faces.length > 0 && faces.every(face => face.status === 'loaded'));
     })).toEqual([true, true]);
     await mkdir('evidence', { recursive: true });
-    await page.screenshot({ path: 'evidence/mini-premium-desktop.png' });
-    // Effective CSS viewport coverage only; this does not prove Windows OS DPI behavior.
-    for (const [label, width, height] of [['125', 1024, 688], ['150', 853, 573], ['narrow', 760, 800]] as const) {
+    // CSS viewport stress only; Windows OS DPI and physical fullscreen still need local checks.
+    for (const [label, width, height] of [['100', 1280, 860], ['125', 1024, 688], ['150', 853, 573], ['small', 720, 480]] as const) {
       await page.setViewportSize({ width, height });
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+      await prompt.fill('x'.repeat(2000));
+      await assertSingleViewport(page);
+      const before = await page.locator('.composer-bar').boundingBox();
+      await page.locator('.chat-history').evaluate(element => {
+        // Layout fixture only: no real AI. Same plain-message structure, 22 long messages.
+        element.replaceChildren();
+        for (let i = 0; i < 22; i++) {
+          const message = document.createElement('article');
+          message.className = `message ${i % 2 ? 'message-user' : 'message-assistant'}`;
+          message.textContent = 'Test locale di cronologia lunga. '.repeat(16);
+          element.append(message);
+        }
+        element.scrollTop = element.scrollHeight;
+      });
+      await assertSingleViewport(page);
+      expect(await page.locator('.composer-bar').boundingBox()).toEqual(before);
+      expect(await page.locator('.chat-history').evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+      await togglePanel('Mostra stato');
+      await assertSingleViewport(page);
+      await openMenu(); await assertSingleViewport(page, true); await closeMenu();
+      await togglePanel('Nascondi stato');
       expect(await page.locator('.energy-one').evaluate(element => getComputedStyle(element).animationName)).toBe('none');
-      await expect(prompt).toBeEnabled();
-      await page.screenshot({ path: `evidence/mini-premium-viewport-${label}.png`, fullPage: true });
+      await page.screenshot({ path: `evidence/mini-minimal-viewport-${label}.png` });
     }
     expect(errors).toEqual([]);
 
