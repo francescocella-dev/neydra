@@ -158,3 +158,35 @@ di navigazione, IPC, dipendenze e app runtime sono invariati.
 **La suite E2E non è stata ancora rieseguita sul PC Windows dopo il
 commit**. Lo smoke completo e la prova manuale restano da convalidare.
 Nessun test OAuth, modello AI, asset 3D o microfono viene attivato.
+
+
+## Secondo smoke Windows e nuova strategia E2E (28 ottobre 2026)
+
+Il proprietario ha eseguito nuovamente `git pull --ff-only`,
+`npm.cmd run typecheck` e `npm.cmd run build`: **PASS**.
+`npm.cmd run test:desktop` ha avviato Electron e verificato
+`webContents.getURL() === 'app://desktop/index.html'`, ma la
+successiva asserzione Playwright sul pulsante offline è scaduta:
+`waiting for navigation to finish`, locator senza risultato
+(`Received: undefined`), timeout 5 s. Questo è coerente con una
+navigazione provvisoria vista da Playwright dopo una navigazione
+esterna annullata; non prova da solo che la GUI non possa funzionare.
+
+**Seconda e ultima correzione mirata al test**, commit `9426821`:
+tutte le prove Playwright dell'interfaccia, streaming, cancellazione,
+ricaricamento, screenshot e assenza di errori vengono ora completate
+**prima** del tentativo di navigazione esterna.
+Il controllo navigazione resta reale, alla fine del test, tramite JS
+eseguito nel renderer da `webContents.executeJavaScript`, ascolto
+dell'evento Electron `will-frame-navigate`, verifica che l'app abbia
+effettivamente chiamato `preventDefault()` e controllo che sia rimasta
+un'unica finestra con URL principale fidato e WebContents integro.
+Non si sostituisce la navigazione con un evento fittizio; nessuna
+modifica a sandbox, blocchi rete/permessi o runtime.
+
+**Ancora da rieseguire su Windows**: typecheck, build,
+`npm.cmd run test:desktop`, e verifica manuale `npm.cmd start`.
+Se il nuovo smoke fallisce, non indebolire i controlli per ottenere
+un PASS: raccogliere l'asserzione e lo stato della finestra/renderer
+per una diagnosi dedicata; il massimo di due modifiche mirate è
+raggiunto.
