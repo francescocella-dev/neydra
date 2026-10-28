@@ -190,3 +190,25 @@ Se il nuovo smoke fallisce, non indebolire i controlli per ottenere
 un PASS: raccogliere l'asserzione e lo stato della finestra/renderer
 per una diagnosi dedicata; il massimo di due modifiche mirate è
 raggiunto.
+
+
+## Terzo controllo Windows: E2E PASS, errore TS introdotto nel test (28 ottobre 2026)
+
+Il proprietario ha scaricato la modifica `9426821` e verificato:
+- `npm.cmd run test:desktop`: **1/1 E2E PASS** in **4,7 s**. Include
+  avvio effettivo Electron/bridge, simulazione offline, cancellazione,
+  permessi/navigazione bloccati, reload e controlli UI previsti.
+- `npm.cmd run typecheck` e `npm.cmd run build`: **FAIL** prima
+  della compilazione, per il solo `TS2532` introdotto nel test alla
+  riga con `BrowserWindow.getAllWindows()[0].webContents`.
+  L'errore è statico: il primo elemento può essere `undefined`.
+  Il test E2E ha usato gli artefatti build preesistenti e **non**
+  costituisce una nuova build completa riuscita.
+
+Nel commit `783b2aa` è stata aggiunta una guardia esplicita alla finestra
+in `tests/desktop.e2e.ts`, con eccezione se la finestra non esiste
+durante la verifica. Non sono cambiate le protezioni Electron, IPC o
+il runtime. **La correzione non è ancora stata convalidata su Windows.**
+Prossimi controlli locali: `npm.cmd run typecheck`,
+`npm.cmd run build`, `npm.cmd run test:desktop`, poi prova
+manuale `npm.cmd start`. Nessuna autenticazione/inferenza reale.
