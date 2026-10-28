@@ -15,6 +15,14 @@ test('real Electron bridge, security, offline stream, interruption and reload', 
     await expect(page.locator('.conversation-zone')).toBeHidden();
     await page.getByRole('button', { name: 'Apri trascrizione' }).click();
     await expect(page.locator('.conversation-zone')).toBeVisible();
+    await page.getByRole('button', { name: 'Nascondi stato' }).click();
+    await expect(page.locator('.telemetry-zone')).toBeHidden();
+    await page.getByRole('button', { name: 'Mostra stato' }).click();
+    await expect(page.locator('.telemetry-zone')).toBeVisible();
+    await expect(page.getByText('Dato non disponibile')).toBeVisible();
+    await page.getByRole('button', { name: 'Impostazioni' }).click();
+    await page.locator('#mini-settings').getByRole('button', { name: 'Apri accesso ChatGPT' }).click();
+    await expect(page.locator('.settings-backdrop')).toHaveCount(0);
     await page.getByRole('button', { name: 'Impostazioni' }).click();
     await page.getByText('Strumenti tecnici · demo offline').click();
     await expect(page.getByRole('button', { name: 'Avvia demo offline' })).toBeEnabled();
