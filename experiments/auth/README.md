@@ -51,10 +51,10 @@ The separate `sse-proposal.mjs` is still an isolated offline research artifact,
 `test/missing-mime-runtime.test.mjs` verifies this new runtime path exclusively
 through mocked response bodies.
 
-Run syntax/tests on Windows **before** even considering another user-approved
-interactive request. The prior two live tests are complete; this code commit
-does not authorize an additional live test or any cloud OAuth/inference.
-Third-party OSS test tools are unnecessary for this implementation.
+The owner ran **78/78 Windows offline tests** before explicitly authorizing
+the successful 2026-10-28 real-account verification. No further real call is
+needed to prove the one-turn result; the branch is still a research prototype
+awaiting product/security review. Third-party OSS test tools are unnecessary.
 
 ## Verifiche locali riproducibili
 
@@ -122,7 +122,8 @@ Questo slice JavaScript non ha transpiler, build, asset o dipendenze condivise.
    `completed: true` richiede un
    evento terminale di successo; `expectedText: true` conferma la risposta attesa.
    Un HTTP 200, un frammento di testo o il catalogo non bastano. Il programma
-   lascia comunque `status: UNVERIFIED`: nessun evento prova la fatturazione.
+   lascia comunque `status: UNVERIFIED` per i controlli **automatici** di
+   fatturazione e Codex, anche in caso di inferenza diretta riuscita.
 8. Dopo il test controlla Usage/limiti dell'app, saldo crediti e assenza di nuove
    spese nelle impostazioni dell'account; attendi l'eventuale aggiornamento dei
    contatori. Non fare altri invii per inseguire un risultato. Copia
@@ -152,7 +153,7 @@ La CLI ora emette un insieme fisso di campi, anche per errori durante lo stream:
 | `contentTypeCategory` | Solo `sse`, `json`, `html`, `missing`, `other`; `null` senza metadati HTTP. Mai il Content-Type grezzo o i suoi parametri. |
 | `hasBodyStream` | Presenza di un ReadableStream nel corpo Fetch. `true` non prova che contenga SSE o sia completo; `false` distingue il corpo assente, `null` significa non osservato. |
 | `requestId` | Solo `x-request-id`, se corrisponde interamente a `req_` + 32 cifre esadecimali (36 caratteri, case-insensitive); conservato senza alterazioni. Altrimenti `null`. Nessun recupero da altri header, token o corpo. |
-| `bodyShape` | Campo preesistente per la sola forma degli errori non-2xx. Rimane `null` per 2xx non SSE: quei corpi non vengono letti o interpretati. |
+| `bodyShape` | Campo per la sola forma degli errori non-2xx. Rimane `null` per risposte 2xx; nel caso speciale HTTP 200 senza MIME, il corpo può essere letto e validato come SSE **senza** esporne il contenuto. |
 
 Il filtro del request ID è una scelta prudenziale locale, non una garanzia sul
 formato di ogni identificativo OpenAI. `null` può significare assente oppure
