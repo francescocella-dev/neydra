@@ -102,3 +102,39 @@ PC Windows dopo la build; non preme OAuth e non effettua inferenza.
 Prossimo gate: proprietario esegue PowerShell offline e verifica la GUI Windows;
 solo poi decide se autorizzare una prova reale nell'app. **Integrazione non
 conclusa fino a tale prova.**
+
+
+## Verifica Windows offline del proprietario — 28 ottobre 2026
+
+Dopo checkout del branch `feat/desktop-chatgpt-plan` in
+`D:\\WORK\\NEYDRA`, il proprietario ha eseguito:
+
+- `npm.cmd ci`: 195 pacchetti aggiunti, audit 0 vulnerabilità; avviso
+  `allow-scripts` per `esbuild@0.28.2`, senza impedire la build.
+- `npm.cmd run setup:electron`: completato senza errori.
+- `npm.cmd run check`, `lint`, `typecheck`: **PASS**.
+- `npm.cmd test`: **65/65 PASS**, cinque file, nessun test saltato.
+- `npm.cmd run build`: **PASS**, renderer Vite 18 moduli trasformati.
+- `npm.cmd run check:preload`: **PASS** (VM simulata).
+- `npm.cmd run test:desktop`: **1/1 PASS** in 13,8 secondi
+  con Electron reale e test di sicurezza/demo offline; OAuth e Responses
+  non chiamati da questo E2E.
+- `npm.cmd start`: **avvio della GUI Windows confermato** con due
+  screenshot inviati dal proprietario. Le immagini mostrano la shell
+  pre-alpha e il nuovo pannello `ChatGPT · piano autorizzato` nello
+  stato iniziale **disconnected**; nessun modello selezionato, casella
+  consenso non selezionata, pulsante di invio disabilitato.
+
+Sono presenti **file non tracciati nel checkout condiviso con Blender/Mini**
+(`mini-asset-work/`, `references/`, documenti locali e screenshot E2E):
+non sono stati aggiunti alla PR. Non eseguire operazioni distruttive sul
+working tree o `git clean`.
+
+**Decisione di stato:** build, controlli e GUI **offline** della PR #9
+sono **PASS su Windows, secondo la verifica del proprietario**.
+L'accesso OAuth e una risposta reale **dentro Electron** rimangono
+`UNVERIFIED`; non dedurre il PASS reale dal probe Node della PR #6.
+Il successivo test account richiede consenso esplicito distinto, controllo
+manuale quota inclusa/crediti/addebiti e un solo invio autorizzato.
+La PR resta draft; nessun merge, release, modifica alle PR #6/#7 o
+chiamata AI reale è stata eseguita da questo aggiornamento.
