@@ -95,12 +95,43 @@ describe('OAuth safeguards with signed synthetic tokens', () => {
     await expect(exchange(current, { code: 'fixture', clientId: 'fixture-client' }, scenario === 'account' ? 'other-subject' : null, fetchImpl)).rejects.toThrow();
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
-  it('blocks arbitrary endpoints before transport and enforces response size', async () => {
+  it('blocks arbitrary endpoints and preserves the 256 KiB OAuth control-plane limit', async () => {
     const fetchImpl = vi.fn<typeof fetch>();
     await expect(request('https://example.org', {}, fetchImpl)).rejects.toThrow('unsupported_endpoint');
     expect(fetchImpl).not.toHaveBeenCalled();
     fetchImpl.mockResolvedValue(new Response('x'.repeat(262145)));
+    await expect(exchange(tx(), { code: 'synthetic', clientId: 'fixture-client' }, null, fetchImpl))
+      .rejects.toThrow('oversized_json');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts a verbose catalog beyond 256 KiB, selecting only authorized display fields', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ models: [
+      { slug: 'visible-model', display_name: 'Visible model', visibility: 'list', verbose_metadata: 'x'.repeat(550000) },
+      { slug: 'not-visible', display_name: 'Hidden model', visibility: 'hide' },
+    ] }));
+    expect(await models('synthetic', fetchImpl)).toEqual([{ slug: 'visible-model', name: 'Visible model' }]);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(`${RESOURCE}/models`);
+  });
+
+  it('still rejects model catalogs larger than the separate 8 MiB budget', async () => {
+    const data = new TextEncoder().encode('x'.repeat(65536));
+    const response = new Response(new ReadableStream({ start(controller) {
+      for (let n = 0; n < 129; n++) controller.enqueue(data);
+      controller.close();
+    } }));
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(response);
     await expect(models('synthetic', fetchImpl)).rejects.toThrow('oversized_json');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects excessive catalog entries without falling back to a guessed model', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+      models: Array.from({ length: 513 }, (_, i) => ({ slug: `test-${i}`, visibility: 'list' })),
+    }));
+    await expect(models('synthetic', fetchImpl)).rejects.toThrow('unexpected_model_catalog');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });
 
