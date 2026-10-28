@@ -212,3 +212,32 @@ il runtime. **La correzione non è ancora stata convalidata su Windows.**
 Prossimi controlli locali: `npm.cmd run typecheck`,
 `npm.cmd run build`, `npm.cmd run test:desktop`, poi prova
 manuale `npm.cmd start`. Nessuna autenticazione/inferenza reale.
+
+## Convalida finale Windows offline — 28 ottobre 2026
+
+Dopo il commit `ccadecd`, il proprietario ha eseguito sulla propria
+installazione Windows da `D:\\WORK\\NEYDRA`:
+- `git pull --ff-only origin issue-4/windows-desktop-shell`: aggiornamento
+  fast-forward con la guardia TypeScript per la finestra.
+- `npm.cmd run typecheck`: **PASS**.
+- `npm.cmd run build`: **PASS**, 17 moduli renderer trasformati
+  e artefatti main/preload/renderer prodotti.
+- `npm.cmd run test:desktop`: **1/1 PASS in 4,6 s**,
+  con Electron reale e le verifiche E2E della demo, IPC, sandbox,
+  cancellazione, reload, restrizioni e navigazione esterna.
+- `npm.cmd start`: avvio reale della finestra Electron **confermato
+  visivamente dall'utente**. Sono stati forniti due screenshot:
+  primo avvio con stato `In attesa`, seguito da
+  `Demo offline completata` e il testo predefinito visibile.
+
+La suite offline precedente aveva già prodotto **17/17 unit PASS**,
+lint e controllo sintassi PASS, `check:preload` PASS e `npm ci` con
+audit 0 vulnerabilità. La verifica manuale separata di Stop/Esc non
+è attestata dalle immagini, ma è compresa nello smoke E2E automatico.
+
+**Decisione di stato:** il requisito Issue #4 di *prima finestra desktop
+offline funzionante su Windows* è **PASS (owner-observed)**.
+Non implica accesso ChatGPT Plus in questa finestra, inferenza,
+voce, modelli 3D o rilascio. Le PR #6 e #7 restano separate.
+La PR #8 rimane DRAFT, nessuna fusione in main o pubblicazione,
+in attesa di un'esplicita decisione del proprietario.
