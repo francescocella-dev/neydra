@@ -1,12 +1,17 @@
-# Issue #2 — risultati del 27 ottobre 2026
+# Issue #2 — risultati dal 27 al 28 ottobre 2026
 
-**Stato complessivo: `UNVERIFIED`.** Esiste un percorso ufficialmente documentato
-per OSS locale compatibile con il progetto. Il proprietario ha segnalato OAuth e
-catalogo riusciti, poi `BLOCKED/expected_event_stream` alla prima richiesta reale.
-La seconda e ultima prova segnala HTTP 200, MIME `missing` e corpo presente:
-vedi [analisi e proposta offline](MISSING_MIME_ANALYSIS.md). Il completamento
-dell'inferenza e i costi rimangono da verificare. L'agente non ha
-eseguito OAuth o inferenza; il follow-up autorizza solo analisi e test simulati.
+**Esito del probe diretto: `PASS` (evidenza riportata dal proprietario, 28 ottobre 2026).**
+Autenticazione e permessi del piano ChatGPT verificati dal programma, catalogo
+modelli ottenuto e richiesta testuale al modello `gpt-5.6-luna` completata con
+il testo esatto atteso: `completed:true`, `expectedText:true`.
+La correzione ha validato rigorosamente uno stream SSE proveniente da HTTP 200 con
+MIME classificato `missing`. Il proprietario ha inoltre confermato manualmente
+zero crediti acquistati, nessun addebito o consumo visibile al momento del controllo.
+**La fatturazione non è verificabile automaticamente dal probe**, e i contatori
+potrebbero aggiornarsi con ritardo. Stato dell'**integrazione complessiva
+NEYDRA/Codex/Electron: `UNVERIFIED`**. Nessun agente ha effettuato OAuth o inferenza
+per conto dell'utente; le prove reali sono state autorizzate ed eseguite localmente
+dal proprietario. La PR rimane in bozza.
 
 ## Piano e perimetro
 
@@ -80,14 +85,17 @@ tentato un login nel cloud. Non sono state aggiunte dipendenze o artefatti ester
 | Handshake protocollo Codex reale, locale e senza token | Verificato su Linux/CLI 0.163.0 |
 | Callback HTTP locale e ACL Windows | Suite iniziale Windows 13/13 segnalata dal proprietario, inclusi 2 test socket; ACL non verificate indipendentemente |
 | Consenso browser e catalogo modelli di questo utente | Riusciti secondo il resoconto del proprietario, non ripetuti dall'agente |
-| Risposta completata con autorizzazione reale e modello disponibile | `UNVERIFIED`; tentativo proprietario bloccato al guard SSE |
-| Assenza di consumo crediti/spese aggiuntive | `UNVERIFIED`, controllo account prima/dopo |
+| Risposta completata con autorizzazione reale e modello disponibile | **PASS (proprietario, 28 ottobre)**: `gpt-5.6-luna`, `completed:true`, `expectedText:true`, stream senza MIME validato |
+| Assenza di consumo crediti/spese aggiuntive | **Conferma manuale del proprietario al controllo successivo**: zero crediti acquistati, nessun addebito o consumo visibile; `billingVerified:false` resta corretto perché non certificabile dal client |
 | Turno Codex con token SIWC reale | `UNVERIFIED`, ponte del token non implementato |
 | Integrazione Electron, storage sicuro persistente, refresh | Fuori dal probe; non verificati |
 
-Nessun `PASS` complessivo. Il blocco corrente è la risposta HTTP non accettata dal
-guard SSE: nella seconda prova HTTP 200, categoria MIME `missing` e corpo presente,
-senza lettura del contenuto. Il formato e l'origine del corpo restano ignoti.
+**Il probe di inferenza diretta ha ora un esito positivo; non equivale a
+rilascio o completamento del prodotto.** Nella seconda prova il vecchio guard
+rifiutava HTTP 200 con MIME `missing` senza leggere il corpo; nella prova del
+28 ottobre, dopo la revisione e i test offline, il client ha letto la **nuova**
+risposta HTTP 200 e convalidato l'intera sequenza SSE, incluso completamento.
+Il corpo della **seconda** prova non è recuperabile: non confondere i due run.
 Ulteriori rischi: cambiamenti della preview, quota condivisa limitata, modelli e
 policy account variabili, algoritmo ID token diverso da RS256 rifiutato, revisione
 OIDC/Electron necessaria prima della distribuzione. Il runbook non può certificare
@@ -146,3 +154,57 @@ tentativi. Il successivo prototipo isolato è documentato in
 [MISSING_MIME_ANALYSIS.md](MISSING_MIME_ANALYSIS.md): 57 test simulati superati,
 2 socket saltati, nessun collegamento al percorso reale. Inferenza BLOCKED,
 PR in bozza e risultato complessivo `UNVERIFIED`.
+
+## Terza prova reale esplicitamente autorizzata — 28 ottobre 2026
+
+Dopo la correzione sul branch e i **78 test Windows superati (0 falliti, 0
+saltati)**, il proprietario ha confermato i vincoli di spesa e ha autorizzato
+**una singola** nuova prova dal suo computer, con Node `v24.18.0`.
+È stato utilizzato `node run.mjs --included-usage-only`, con conferme
+`SOLO_PIANO` e `INVIA` e modello numero 8 (`gpt-5.6-luna`).
+
+L'evidenza sanitizzata osservata dal proprietario è:
+
+```json
+{
+  "status": "UNVERIFIED",
+  "mode": "real-account",
+  "identityVerified": true,
+  "planScopeGranted": true,
+  "completed": true,
+  "expectedText": true,
+  "httpStatus": 200,
+  "contentTypeCategory": "missing",
+  "hasBodyStream": true,
+  "requestId": null,
+  "missingMimeStreamValidated": true,
+  "billingVerified": false,
+  "codexTurnVerified": false,
+  "next": "Verifica manualmente consumo e assenza addebiti: README.md. Nessun PASS automatico."
+}
+```
+
+**Conclusioni autorizzate:**
+- Accesso browser e consenso, verifica identità, scope del piano, catalogo modelli
+  e una **risposta testuale corretta e completata** al Responses endpoint con
+  bearer OAuth hanno funzionato sull'account reale del proprietario.
+- Il precedente problema di compatibilità `Content-Type` è stato superato
+  in questa prova: classificazione MIME `missing`, convalida SSE riuscita,
+  `response.completed` e risultato testuale esatto.
+- Il proprietario ha ricontrollato l'abbonamento: **nessun consumo o addebito
+  rilevato, zero crediti acquistati**. Questa è un'osservazione manuale
+  puntuale, **non** una garanzia contabile o un'affermazione di costo zero
+  per ogni eventuale utilizzo futuro.
+- `status:UNVERIFIED` in output è intenzionale perché la validazione automatica
+  delle spese e un turno Codex non sono implementati nel probe. Lo stato **della
+  capacità di inferenza diretta** è `PASS (owner-observed)`, ma lo stato
+  **del prodotto NEYDRA intero** rimane `UNVERIFIED`.
+- Non sono stati provati: app Electron, voce STT/TTS, conversazione multi-turno,
+  salvataggio sicuro/rinnovo token, orizzonte di quota, Codex app-server con token
+  reale, utilizzo di strumenti o comportamento su altri account.
+- Nessuna ulteriore chiamata reale è necessaria per dimostrare la singola risposta
+  testuale già completata. La PR resta DRAFT e non deve essere fusa senza
+  revisione di sicurezza e dei confini d'integrazione.
+
+Non includere URL OAuth, token, ID privati, dati del conto o output generato grezzo
+in questo registro.
