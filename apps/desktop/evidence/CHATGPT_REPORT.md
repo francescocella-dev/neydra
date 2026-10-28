@@ -138,3 +138,44 @@ Il successivo test account richiede consenso esplicito distinto, controllo
 manuale quota inclusa/crediti/addebiti e un solo invio autorizzato.
 La PR resta draft; nessun merge, release, modifica alle PR #6/#7 o
 chiamata AI reale è stata eseguita da questo aggiornamento.
+
+## Primo tentativo OAuth Electron: host ID respinto prima del consenso (28 ottobre 2026)
+
+Dopo il PASS locale **65/65 test offline**, **1/1 E2E** e avvio GUI,
+il proprietario ha selezionato `Continue with ChatGPT`.
+Il browser ufficiale ha mostrato il solo errore sanitizzato:
+
+```json
+{
+  "error": {
+    "message": "Invalid authorize request",
+    "type": "invalid_request_error",
+    "param": "ext_agent_host_id",
+    "code": "invalid_authorize_request"
+  }
+}
+```
+
+Il problema avviene nell'authorize, **prima del callback e dell'inferenza**.
+Non risulta un token emesso o una richiesta Responses da questo tentativo.
+La causa riscontrata in codice è che la PR #9 emetteva un bare UUID
+(`randomUUID()`), anziché il URI `urn:uuid:<UUIDv4>`
+richiesto dalla [guida OSS OpenAI](https://developers.openai.com/siwc/token-sharing-open-source).
+Il probe precedente della PR #6 già usava `urn:uuid:${randomUUID()}`
+e aveva ottenuto una risposta reale.
+
+**Correzione in questa PR (non ancora convalidata su Windows):**
+- Registrazione nuova crea `urn:uuid:<UUIDv4>` e conserva il valore.
+- File precedenti con solo UUID semplice e `clientId/subject` null
+  vengono migrati automaticamente **mantenendo il medesimo UUID**.
+- Se la registrazione contiene un cliente/identità già associato al
+  vecchio formato, bloccare senza riscrivere il file.
+- Il contratto OAuth `transaction()` rifiuta i valori host non validi
+  prima di generare l'URL di autorizzazione.
+- Aggiunti test simulati per migrazione, persistenza, rifiuti e forma
+  `ext_agent_host_id`. Nessuna chiamata real-account dopo l'errore.
+
+**Gate:** proprietario esegue nuovamente suite offline e GUI Windows
+dopo il pull. Non ripetere automaticamente il browser OAuth né
+eseguire inferenza. La PR resta DRAFT; nessun merge/release e
+nessuna modifica a PR #6/#7, mini-asset-work o references.
