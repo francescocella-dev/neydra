@@ -32,6 +32,41 @@ condizioni e idoneità prima della prova locale. Il percorso pubblico
 `https://api.openai.com/v1/responses` è quello documentato per SIWC con OAuth del
 piano: non viene usata una API key né un percorso di fatturazione API separato.
 
+## Correzione host ID di registrazione (28 ottobre 2026)
+
+Durante il primo avvio Windows della PR #9 il proprietario ha premuto
+`Continue with ChatGPT` e il browser ha restituito
+`invalid_authorize_request` con parametro `ext_agent_host_id`,
+**prima del consenso e prima di qualsiasi richiesta Responses**.
+
+**Causa nel codice identificata:** PR #9 persisteva e inviava un UUID
+senza lo schema URI (`randomUUID()`), mentre il probe funzionante
+della PR #6 emetteva `urn:uuid:${randomUUID()}`. La
+[documentazione SIWC ufficiale](https://developers.openai.com/siwc/token-sharing-open-source)
+richiede per gli UUID host il formato `urn:uuid:<UUIDv4>`.
+
+**Fix nel medesimo branch:** la nuova registrazione salva un UUID URN;
+il caricamento aggiorna **soltanto** il vecchio host ID UUID semplice
+quando non esistono né `clientId` emesso né `subject` validato,
+mantenendo identiche le 36 cifre/caratteri dell'UUID già persistito.
+Se esiste un'associazione OAuth precedente, la registrazione viene
+rifiutata senza essere alterata; non si rigenerano identificatori e
+non si cancellano file dell'utente. `transaction()` rifiuta host ID
+non conformi **prima** di aprire il browser.
+
+Test aggiunti: URL authorize con URI host conforme, rifiuto del formato
+errato, nuovo file valido, migrazione del file legacy senza identità,
+protezione dei dati già registrati e rifiuto file malformati. Nessun
+OAuth/inferenza reale effettuato durante la correzione.
+
+**Da verificare su Windows** dopo aver chiuso la finestra precedente:
+`git pull --ff-only`, `npm.cmd run check`, `lint`, `typecheck`,
+`npm.cmd test`, `npm.cmd run build`, `check:preload`,
+`test:desktop` e un avvio offline dell'app. Il codice aggiornato non
+è ancora stato eseguito sul PC utente. Non premere nuovamente Continue
+with ChatGPT fino al superamento dei test e a una decisione esplicita
+sul nuovo tentativo di autenticazione.
+
 ## Confini implementati
 
 - Main: registra host/client emesso e subject verificato; avvia il listener
