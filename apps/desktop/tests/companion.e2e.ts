@@ -1,5 +1,6 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import { resolve } from 'node:path';
+import { companionGeometry } from './helpers/companion-geometry';
 
 const ORBIT = 'app://orbit/index.html';
 
@@ -40,25 +41,24 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
     await reduced(); let core = await firstCore;
     const coreId = (await state()).coreId!;
     const stable = async (phase: string) => {
-      const native = await desktop.evaluate(({ BrowserWindow, screen }) => {
-        const core = BrowserWindow.getAllWindows().find(window => window.webContents.getURL() === 'app://companion/index.html')!;
-        const bounds = core.getBounds();
-        return { bounds, content: core.getContentBounds(), scale: screen.getDisplayMatching(bounds).scaleFactor,
-          areas: screen.getAllDisplays().map(display => display.workArea),
-          satellites: BrowserWindow.getAllWindows().filter(window => window.webContents.getURL() === 'app://orbit/index.html')
-            .map(window => ({ bounds: window.getBounds(), visible: window.isVisible() })) };
-      });
-      const renderer = await core.evaluate(() => {
-        const button = document.getElementById('companion')!, box = button.getBoundingClientRect(), style = getComputedStyle(button);
-        return { width: box.width, height: box.height, x: box.x, y: box.y, radius: style.borderRadius, transform: style.transform,
-          appearance: style.appearance, dpr: devicePixelRatio, viewport: { width: innerWidth, height: innerHeight }, captured: button.hasPointerCapture(1) };
-      });
-      geometry.push({ phase, native, renderer });
+      const snapshot = await companionGeometry(desktop);
+      const { native, renderer } = snapshot;
+      geometry.push({ phase, ...snapshot });
       expect(native.bounds).toMatchObject({ width: 120, height: 120 }); expect(native.content).toMatchObject({ width: 120, height: 120 });
       expect(renderer).toMatchObject({ width: 112, height: 112, x: 4, y: 4, radius: '50%', transform: 'none', appearance: 'none' });
-      for (const satellite of native.satellites.filter(window => window.visible)) {
-        expect(satellite.bounds).toMatchObject({ width: 64, height: 64 });
-        expect(native.areas.some(area => satellite.bounds.x >= area.x && satellite.bounds.y >= area.y && satellite.bounds.x + 64 <= area.x + area.width && satellite.bounds.y + 64 <= area.y + area.height)).toBe(true);
+      const visible = native.satellites.filter(window => window.visible);
+      const disjoint = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>
+        a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
+      for (const satellite of visible) {
+        expect(satellite.bounds).toMatchObject({ width: 72, height: 72 });
+        expect(satellite.content).toMatchObject({ width: 72, height: 72 });
+        const box = satellite.bounds;
+        expect(native.areas.some(area => box.x >= area.x && box.y >= area.y && box.x + box.width <= area.x + area.width && box.y + box.height <= area.y + area.height)).toBe(true);
+        expect(disjoint(box, native.bounds!)).toBe(true);
+      }
+      if (visible.length === 2) expect(disjoint(visible[0]!.bounds, visible[1]!.bounds)).toBe(true);
+      if (visible.length) for (const satellite of snapshot.satellites) {
+        expect(satellite).toMatchObject({ present: true, width: 48, height: 48, x: 12, y: 12, radius: '50%', viewport: { width: 72, height: 72 } });
       }
     };
     await expect(core.getByRole('button', { name: 'Apri NEYDRA', exact: true })).toBeVisible();
@@ -105,6 +105,8 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
         else await core.getByRole('button').click({ button: 'right' });
         await expect.poll(state).toMatchObject({ orbitVisible: 2, count: 4 });
         const pages = desktop.windows().filter(page => page.url() === ORBIT);
+        // Wait for the actual finite entry animations, not an arbitrary delay.
+        await Promise.all(pages.map(page => page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {}))))));
         const named = await Promise.all(pages.map(async page => ({ page, role: await page.evaluate(() => window.neydraOrbit.getRole()) })));
         return { open: named.find(entry => entry.role.ok && entry.role.role === 'open')!.page,
           exit: named.find(entry => entry.role.ok && entry.role.role === 'exit')!.page };
@@ -136,6 +138,8 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
       await closed; exited = true;
     } finally { if (!exited) { await probe.evaluate(p => p.dispose()).catch(() => {}); await probe.dispose(); } }
   } catch (error) {
+    const failure = await companionGeometry(desktop).catch(() => undefined);
+    if (failure) geometry.push({ phase: 'failure', ...failure });
     await test.info().attach('companion-v2-geometry', { body: JSON.stringify(geometry, null, 2), contentType: 'application/json' });
     throw error;
   } finally { if (!exited) await desktop.close(); }

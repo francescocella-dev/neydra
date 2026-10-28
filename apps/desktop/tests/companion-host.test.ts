@@ -197,7 +197,7 @@ it('satellite focus stays within the menu; outside blur, Escape and drag cancel 
   const core = MockWindow.windows[1]!, before = core.getBounds();
   await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: true } });
   const open = MockWindow.windows[2]!, exit = MockWindow.windows[3]!;
-  expect(open.options).toMatchObject({ width: 64, height: 64, minWidth: 64, maxWidth: 64, skipTaskbar: true, parent: core });
+  expect(open.options).toMatchObject({ width: 72, height: 72, minWidth: 72, maxWidth: 72, minHeight: 72, maxHeight: 72, skipTaskbar: true, parent: core });
   expect(open.options.webPreferences?.session).not.toBe(core.options.webPreferences?.session);
   vi.useFakeTimers(); core.emit('blur'); await vi.advanceTimersByTimeAsync(0); expect(open.visible && exit.visible).toBe(true);
   MockWindow.focused = null; open.emit('blur'); await vi.advanceTimersByTimeAsync(0);
@@ -209,6 +209,9 @@ it('satellite focus stays within the menu; outside blur, Escape and drag cancel 
   await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
   await invoke(exit, ORBIT_CHANNEL, { type: 'dismiss' }); await vi.advanceTimersByTimeAsync(150);
   expect(open.visible || exit.visible).toBe(false); expect(MockWindow.focused).toBe(core);
+  await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
+  open.setPosition(-5000, -5000); open.emit('resize'); // Late OS/DPI adjustment uses actual bounds.
+  expect(open.visible || exit.visible).toBe(false);
   expect(core.getBounds()).toEqual(before); expect(main.visible).toBe(false); expect(app.quit).not.toHaveBeenCalled();
   vi.useRealTimers();
 });

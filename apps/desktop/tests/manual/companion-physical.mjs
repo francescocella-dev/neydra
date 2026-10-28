@@ -16,7 +16,8 @@ async function record(phase) {
       return { bounds, content: core.getContentBounds(), scale: screen.getDisplayMatching(bounds).scaleFactor,
         areas: screen.getAllDisplays().map(display => display.workArea),
         satellites: BrowserWindow.getAllWindows().filter(window => window.webContents.getURL() === 'app://orbit/index.html')
-          .map(window => ({ bounds: window.getBounds(), visible: window.isVisible() })) };
+          .map(window => ({ bounds: window.getBounds(), content: window.getContentBounds(),
+            scale: screen.getDisplayMatching(window.getBounds()).scaleFactor, visible: window.isVisible() })) };
     });
     if (!native) return;
     const renderer = await core.evaluate(() => {
@@ -24,7 +25,12 @@ async function record(phase) {
       return { width: box.width, height: box.height, x: box.x, y: box.y, transform: style.transform, appearance: style.appearance,
         dpr: devicePixelRatio, viewport: { width: innerWidth, height: innerHeight }, captured: button.hasPointerCapture(1) };
     });
-    samples.push({ phase, native, renderer });
+    const satellites = await Promise.all(desktop.windows().filter(page => page.url() === 'app://orbit/index.html').map(page => page.evaluate(() => {
+      const button = document.getElementById('action'), box = button.getBoundingClientRect();
+      return { width: box.width, height: box.height, x: box.x, y: box.y, dpr: devicePixelRatio,
+        viewport: { width: innerWidth, height: innerHeight }, transform: getComputedStyle(button).transform };
+    }).catch(() => undefined)));
+    samples.push({ phase, native, renderer, satellites });
   } catch { /* A window may close during a measurement. Never collect raw errors. */ }
 }
 try {

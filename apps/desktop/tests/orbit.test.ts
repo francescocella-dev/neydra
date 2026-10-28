@@ -1,13 +1,20 @@
 import { expect, it, vi } from 'vitest';
-import { OrbitController, orbitCommand, orbitPlacement, type Satellite } from '../src/main/orbit-controller';
+import { OrbitController, orbitCommand, orbitPlacement, orbitFits, type Satellite } from '../src/main/orbit-controller';
 import type { OrbitRole } from '../src/shared/orbit-contracts';
 import { orbitAsset, ORBIT_URL, COMPANION_URL, trustedOrbit } from '../src/main/companion-security';
 
+function satelliteFixture(width = 72, height = 72) {
+  let bounds = { x: 0, y: 0, width, height };
+  return { isDestroyed: vi.fn(() => false), getBounds: vi.fn(() => ({ ...bounds })),
+    setPosition: vi.fn((x: number, y: number) => { bounds = { ...bounds, x, y }; }),
+    resize(width: number, height: number) { bounds = { ...bounds, width, height }; },
+    reveal: vi.fn(), conceal: vi.fn(), focus: vi.fn(), destroy: vi.fn() };
+}
 function fixture() {
   const core = { x: 300, y: 250, width: 120, height: 120 };
-  const windows: Satellite[] = [];
+  const windows: ReturnType<typeof satelliteFixture>[] = [];
   const create = vi.fn<(role: OrbitRole) => Promise<Satellite>>(async () => {
-    const window = { isDestroyed: vi.fn(() => false), setPosition: vi.fn(), reveal: vi.fn(), conceal: vi.fn(), focus: vi.fn(), destroy: vi.fn() };
+    const window = satelliteFixture();
     windows.push(window); return window;
   });
   const changed = vi.fn(), focus = vi.fn(), restore = vi.fn(), quit = vi.fn();
@@ -23,13 +30,14 @@ it('keeps both satellites in actual work areas at all edges/corners, including n
       const placement = orbitPlacement(core, areas)!;
       expect(placement).toBeDefined(); expect(core).toEqual(original);
       for (const box of Object.values(placement)) {
-        expect(box.width).toBe(64); expect(box.height).toBe(64);
+        expect(box.width).toBe(72); expect(box.height).toBe(72);
         expect(box.x).toBeGreaterThanOrEqual(area.x); expect(box.y).toBeGreaterThanOrEqual(area.y);
         expect(box.x + box.width).toBeLessThanOrEqual(area.x + area.width);
         expect(box.y + box.height).toBeLessThanOrEqual(area.y + area.height);
       }
       const { open, exit } = placement;
-      expect(open.x + 64 <= exit.x || exit.x + 64 <= open.x || open.y + 64 <= exit.y || exit.y + 64 <= open.y).toBe(true);
+      const disjoint = (a: typeof core, b: typeof core) => a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
+      expect(disjoint(open, exit)).toBe(true); expect(disjoint(open, core)).toBe(true); expect(disjoint(exit, core)).toBe(true);
     }
   }
   expect(orbitPlacement({ x: 500, y: 0, width: 120, height: 120 }, [{ x: 0, y: 0, width: 400, height: 500 }, { x: 1000, y: 0, width: 400, height: 500 }])).toBeUndefined();
@@ -73,7 +81,7 @@ it('cancels pending creation on second click, drag/restore/disposal without orph
     f.orbit[action]();
     expect(await f.orbit.toggle(false)).toMatchObject({ code: action === 'dispose' ? 'unavailable' : 'busy' });
     expect(f.create).toHaveBeenCalledOnce();
-    const late = { isDestroyed: () => false, setPosition: vi.fn(), reveal: vi.fn(), conceal: vi.fn(), focus: vi.fn(), destroy: vi.fn() };
+    const late = satelliteFixture();
     finish(late); expect(await pending).toMatchObject({ code: 'unavailable' });
     expect(late.destroy).toHaveBeenCalledOnce(); expect(late.reveal).not.toHaveBeenCalled();
   }
@@ -86,4 +94,35 @@ it('recovers from failed creation and disposes every overlay; no automatic retry
   await f.orbit.toggle(false); f.orbit.dispose();
   for (const window of f.windows) expect(window.destroy).toHaveBeenCalledOnce();
   expect(await f.orbit.toggle(false)).toMatchObject({ code: 'unavailable' });
+});
+
+it('uses each measured native size, including unequal DPI-rounded bounds, for placement and collisions', async () => {
+  const f = fixture(), open = satelliteFixture(80, 74), exit = satelliteFixture(73, 78);
+  f.create.mockResolvedValueOnce(open).mockResolvedValueOnce(exit);
+  expect(await f.orbit.toggle(false)).toEqual({ ok: true });
+  expect(orbitFits(f.core, [{ x: 0, y: 0, width: 1024, height: 688 }], { open: open.getBounds(), exit: exit.getBounds() })).toBe(true);
+  expect(open.getBounds()).toMatchObject({ width: 80, height: 74 });
+  // Raw measured Rects include x/y. They must not override calculated positions.
+  expect(open.getBounds()).not.toMatchObject({ x: 0, y: 0 });
+});
+it('rechecks native bounds after a move across DPI and permits only one replan before revealing', async () => {
+  const f = fixture(); f.core.x = 904; f.core.y = 568;
+  const open = satelliteFixture(), exit = satelliteFixture();
+  const move = open.setPosition.getMockImplementation()!;
+  open.setPosition.mockImplementationOnce((x, y) => { move(x, y); open.resize(80, 80); });
+  f.create.mockResolvedValueOnce(open).mockResolvedValueOnce(exit);
+  expect(await f.orbit.toggle(false)).toEqual({ ok: true });
+  expect(open.setPosition).toHaveBeenCalledTimes(2);
+  expect(orbitFits(f.core, [{ x: 0, y: 0, width: 1024, height: 688 }], { open: open.getBounds(), exit: exit.getBounds() })).toBe(true);
+  expect(open.reveal).toHaveBeenCalledOnce();
+});
+it('closes on later unsafe native changes and refuses impossible measured bounds without tolerance or automatic retry', async () => {
+  const f = fixture(); await f.orbit.toggle(false);
+  f.windows[0]!.resize(500, 500); expect(f.orbit.validate()).toBe(false);
+  expect(f.changed).toHaveBeenLastCalledWith(false); expect(f.quit).not.toHaveBeenCalled();
+  const impossible = fixture(), oversized = satelliteFixture(500, 500); impossible.create.mockResolvedValueOnce(oversized);
+  expect(await impossible.orbit.toggle(false)).toMatchObject({ code: 'unavailable' });
+  for (const window of impossible.windows) expect(window.reveal).not.toHaveBeenCalled();
+  expect(oversized.reveal).not.toHaveBeenCalled();
+  expect(impossible.quit).not.toHaveBeenCalled();
 });

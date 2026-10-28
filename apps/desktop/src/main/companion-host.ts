@@ -78,6 +78,8 @@ export function createCompanionHost(main: BrowserWindow) {
     const failed = () => { orbit.close(); if (!window.isDestroyed()) window.destroy(); };
     window.on('closed', () => { clearTimeout(entry.timer); satellites.delete(senderId); if (!disposed) orbit.close(); });
     window.on('focus', () => orbit.focused(role));
+    window.on('moved', () => orbit.validate());
+    window.on('resize', () => orbit.validate());
     window.on('unresponsive', failed);
     window.webContents.on('render-process-gone', failed);
     window.webContents.on('preload-error', failed);
@@ -85,6 +87,7 @@ export function createCompanionHost(main: BrowserWindow) {
     catch { failed(); throw new Error('Orbit unavailable'); }
     const port: Satellite = {
       isDestroyed: () => window.isDestroyed(),
+      getBounds: () => window.getBounds(),
       setPosition: (x, y) => window.setPosition(x, y), focus: () => window.focus(), destroy: () => window.destroy(),
       reveal() { clearTimeout(entry.timer); window.setIgnoreMouseEvents(false); window.showInactive(); window.webContents.send(ORBIT_EVENT, 'reveal'); },
       conceal(animate) {

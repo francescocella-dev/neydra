@@ -1,10 +1,11 @@
 # NEYDRA Mini — Companion V2
 
-PR #10 **DRAFT**, branch `feat/desktop-mini-interface`. Baseline
-`4d5911111098007c0b358b0cdeb0f8b891ca9f4a`: il proprietario riferisce su Windows
-check/lint/typecheck/build, **113/113 unit, 2/2 Electron E2E, entrambi i preload** e
-prova fisica eseguiti con successo. Il menu nativo funzionava; l'esperienza non
-era approvata. Questa V2 richiede una nuova convalida visiva e Windows.
+PR #10 **DRAFT**, branch `feat/desktop-mini-interface`. Ultima baseline Windows
+`5dfc375a03bbe69e04e089070c8604b7643648f5`: il proprietario riferisce check/lint/
+typecheck/build, **125/125 unit, tre preload ed E2E immersivo PASS**. L'E2E companion
+fallisce perché i satelliti richiesti da 64 DIP misurano 65×65 nativi. Il candidato
+corrente richiede **72×72 DIP**, mantenendo i cerchi da 48. Nuovo E2E Windows e
+approvazione visiva restano da eseguire. [Report del follow-up](../apps/desktop/evidence/COMPANION_V2_REPORT.md#follow-up-windows-dimensioni-native-dei-satelliti).
 
 ## Riduzione e continuità
 
@@ -32,8 +33,8 @@ instance, chiusura ordinaria, Alt+F4 sul cerchio e uscita controllata restano at
 | --- | --- | --- | --- |
 | Immersiva | dimensioni native esistenti | interfaccia approvata | bridge desktop precedente |
 | Cerchio Mini | sempre 120×120 | cerchio 112×112, inset 4 | ripristino, drag e menu |
-| Satellite Apri | sempre 64×64 | pulsante circolare 48×48 | solo il proprio comando |
-| Satellite Esci | sempre 64×64 | pulsante circolare 48×48 | solo il proprio comando |
+| Satellite Apri | richiesti 72×72, min/max 72 | pulsante circolare 48×48 centrato | solo il proprio comando |
+| Satellite Esci | richiesti 72×72, min/max 72 | pulsante circolare 48×48 centrato | solo il proprio comando |
 
 Il menu usa **due piccoli overlay nativi separati**, figli del companion. Nessuna
 espansione o riposizionamento del cerchio per fare spazio al menu. Nessun grande
@@ -41,13 +42,21 @@ rettangolo trasparente intercetta i clic tra i controlli. Si arriva al massimo a
 quattro BrowserWindow vive; i satelliti vengono creati soltanto al primo uso e
 riusati. Creazioni pendenti e riaperture sono serializzate, anche dopo cancel.
 
-Il main valuta coppie di posizioni su un'orbita di raggio 106 DIP, richiedendo che
-entrambi i rettangoli da 64 DIP siano interamente nella work area del cerchio e
-non si sovrappongano. Non usa l'unione dei monitor, che includerebbe vuoti. Gestisce
+Il main valuta coppie di posizioni su un'orbita di raggio 106 DIP, leggendo i bounds
+effettivi di ciascun satellite dopo caricamento e spostamento. Entrambi devono
+stare nella work area del cerchio e restare separati fra loro **e dal rettangolo
+nativo del core**, con 4 DIP di spazio (non una tolleranza sulle misure). Il core
+non si sposta per creare spazio. Non usa l'unione dei monitor, che includerebbe vuoti. Gestisce
 angoli, bordi, taskbar, coordinate negative e diverse dimensioni logiche. Cambi di
 monitor/DPI/risoluzione chiudono il menu e ricollocano il cerchio se necessario.
 Se manca spazio per due comandi, il menu non viene aperto: il cerchio resta
 cliccabile per recuperare NEYDRA, senza tagliare controlli.
+
+I satelliti restano nascosti durante il calcolo. Se il passaggio a un altro DPI
+ne cambia la misura, è consentita una sola ricalcolazione. Bounds reali non validi
+dopo il posizionamento, alla comparsa o su successivi eventi move/resize chiudono
+il menu senza ritentare automaticamente. Il CSS centra i 48 DIP nel viewport
+effettivo: a 72×72 l'inset è 12 DIP. Nessun clipping, maschera o epsilon introdotto.
 
 Il corpo del companion ha `appearance:none`, dimensioni CSS fisse, nessun
 transform o scale e indicatore di focus **interno**. Anche min/max dei bounds
