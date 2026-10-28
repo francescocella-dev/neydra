@@ -32,7 +32,16 @@ test('real Electron bridge, security, offline stream, interruption and reload', 
     await page.evaluate(() => { window.open('https://example.org'); });
     expect(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
     await page.evaluate(() => { location.href = 'https://example.org'; });
-    await expect(page).toHaveURL('app://desktop/index.html');
+    // A cancelled top-level navigation can leave Playwright's page URL empty
+    // while Chromium is resolving the provisional navigation. Verify the
+    // trusted Electron main-frame URL AND the original renderer are intact;
+    // do not weaken navigation blocking or accept a blank replacement page.
+    await expect.poll(() => desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.webContents.getURL() ?? ''),
+    { message: 'Electron main frame must remain at the trusted app URL' })
+      .toBe('app://desktop/index.html');
+    await expect(page.getByRole('button', { name: 'Avvia demo offline' })).toBeEnabled();
+    await expect(page.getByLabel('Preferenza avatar futura')).toHaveValue('mini');
     await page.getByRole('button', { name: 'Avvia demo offline' }).click();
     await page.reload();
     await expect(page.getByRole('button', { name: 'Avvia demo offline' })).toBeEnabled();
