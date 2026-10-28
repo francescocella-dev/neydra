@@ -1,0 +1,30 @@
+name: Desktop Windows (manual, offline)
+
+# Opt-in only: this PR does not start hosted builds or publish artifacts.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    # Standard public-repository runner. No larger/custom runner or paid service.
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run setup:electron
+      - run: npm run check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run check:preload
+      - run: npm run test:desktop
+      - run: npm audit

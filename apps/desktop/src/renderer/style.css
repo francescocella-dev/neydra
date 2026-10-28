@@ -1,0 +1,33 @@
+:root { font-family: "Segoe UI", system-ui, sans-serif; color: #e8f7ff; background: #050b14; color-scheme: dark; line-height: 1.5; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.shell { max-width: 1680px; margin: auto; padding: 28px 36px; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 24px; border-bottom: 1px solid #284055; padding-bottom: 24px; }
+h1 { font-size: 30px; letter-spacing: .18em; margin: 4px 0 0; }
+h2 { font-size: 20px; font-weight: 500; margin-top: 0; }
+.eyebrow { font-size: 12px; letter-spacing: .12em; color: #9bb4c8; }
+.badge { font-size: 13px; border: 1px solid #4fe0c4; border-radius: 4px; color: #4fe0c4; padding: 8px 12px; }
+main { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 32px; padding: 28px 0; }
+aside { border-right: 1px solid #284055; padding-right: 24px; }
+dt { color: #e8f7ff; margin-top: 24px; }
+dd { color: #9bb4c8; margin: 4px 0 0; font-size: 14px; }
+aside p, .muted { color: #9bb4c8; font-size: 13px; }
+.stage { min-height: 270px; border: 1px dashed #365369; border-radius: 6px; padding: 32px; background: #091320; }
+.stage h2 { font-size: 28px; margin: 12px 0; }
+.stage p, .demo > p { color: #9bb4c8; }
+.stage label { display: flex; align-items: center; gap: 14px; font-size: 14px; }
+select, textarea, button { font: inherit; border: 1px solid #476478; border-radius: 4px; }
+select, textarea { background: #0c1828; color: #e8f7ff; padding: 8px 12px; }
+.demo { padding-top: 28px; }
+.demo > p { margin: 10px 0; font-size: 14px; }
+.caption { min-height: 72px; padding: 14px; background: #0c1828; border-left: 2px solid #6ad9ff; white-space: pre-wrap; overflow-wrap: anywhere; }
+form { margin-top: 18px; }
+form label { display: block; font-size: 13px; margin-bottom: 8px; }
+textarea { width: 100%; resize: vertical; min-height: 72px; max-height: 220px; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+button { padding: 10px 16px; background: #6ad9ff; color: #050b14; cursor: pointer; }
+button[type="button"] { color: #e8f7ff; background: #0c1828; }
+button:disabled { opacity: .5; cursor: default; }
+:focus-visible { outline: 2px solid #a59bff; outline-offset: 3px; }
+footer { border-top: 1px solid #284055; padding-top: 16px; color: #9bb4c8; font-size: 12px; }
+@media (max-width: 900px) { .shell { padding: 20px; } main { grid-template-columns: 180px minmax(0, 1fr); gap: 20px; } .stage { padding: 20px; } header { align-items: flex-start; flex-wrap: wrap; } }
