@@ -77,7 +77,8 @@ export function App() {
       }
       if (event.key === 'F11') {
         event.preventDefault();
-        void toggleFullscreen();
+        const action = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+        void action.catch(() => setWindowNotice('Schermo intero non disponibile su questa configurazione.'));
       }
     };
     window.addEventListener('keydown', onKey);
