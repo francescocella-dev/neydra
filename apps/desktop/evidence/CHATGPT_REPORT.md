@@ -179,3 +179,27 @@ e aveva ottenuto una risposta reale.
 dopo il pull. Non ripetere automaticamente il browser OAuth né
 eseguire inferenza. La PR resta DRAFT; nessun merge/release e
 nessuna modifica a PR #6/#7, mini-asset-work o references.
+
+## Windows — test della correzione host UUID URN superati (28 ottobre 2026)
+
+Il proprietario ha eseguito un `git pull --ff-only` al commit `7898ab4`
+e la suite completa offline su Windows dal checkout `D:\\WORK\\NEYDRA`:
+
+- `npm.cmd run check`: **PASS**.
+- `npm.cmd run lint`: **PASS**, zero warning.
+- `npm.cmd run typecheck`: **PASS**.
+- `npm.cmd test`: **69/69 PASS**, cinque file, nessun errore.
+- `npm.cmd run build`: **PASS** (18 moduli Vite trasformati).
+- `npm.cmd run check:preload`: **PASS**, VM con Electron mock.
+- `npm.cmd run test:desktop`: **1/1 PASS** (6,5 s),
+  Electron reale su Windows con asserzioni offline.
+- Nessuna chiamata OAuth o richiesta Responses reale è stata
+  eseguita durante questi controlli.
+
+**Gate superato:** regressioni offline del fix `ext_agent_host_id`.
+**Gate ancora aperto:** nuova autorizzazione tramite browser di sistema
+e catalogo reale nell'app; la correzione non è ancora convalidata
+contro OpenAI. Procedere per fasi: prima autenticazione/catalogo
+senza invio AI, poi eventuale singola richiesta esplicitamente
+autorizzata e ricontrollo manuale di quota e addebiti.
+La PR resta draft; nessun merge o intervento su Mini/3D.
