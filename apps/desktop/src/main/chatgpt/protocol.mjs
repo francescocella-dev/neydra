@@ -52,6 +52,11 @@ export function transaction(redirectUri, hostId, clientId = null) {
   if (redirect.protocol !== 'http:' || redirect.hostname !== '127.0.0.1' ||
       redirect.pathname !== '/auth/callback' || redirect.search || redirect.hash ||
       redirect.username || redirect.password) throw new Stop('invalid_loopback');
+  // SIWC requires a host identifier in a documented URI format, not a bare UUID.
+  // Refuse malformed IDs locally before launching the user's system browser.
+  if (typeof hostId !== 'string' ||
+      !/^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(hostId))
+    throw new Stop('invalid_host_identifier');
   return { redirectUri, hostId, clientId, state: random(), nonce: random(), verifier: random(),
     expiresAt: Date.now() + 180_000, consumed: false };
 }
