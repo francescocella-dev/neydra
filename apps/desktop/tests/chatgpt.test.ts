@@ -272,7 +272,9 @@ it('catalogue denial or zero authorized models prevents inference and connection
       ? scenario === 'empty' ? Response.json({ models: [] }) : Response.json({ error: { code: 'subscription_sharing_user_not_eligible' } }, { status: 403 })
       : original(url, options));
     await expect(adapter.connect(new AbortController().signal)).rejects.toThrow();
-    expect(adapter.state()).toEqual({ state: 'disconnected', models: [] });
+    expect(adapter.state()).toMatchObject({
+      state: 'disconnected', models: [], diagnostic: { phase: 'model-catalog' },
+    });
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   }
 });
@@ -322,7 +324,6 @@ describe('sanitized OAuth phase diagnostics after browser callback (offline fixt
   it('reports empty authorized model catalogue and clears errors on successful sign-in', async () => {
     const { adapter, fetchImpl } = fixtureAdapter();
     const original = fetchImpl.getMockImplementation()!;
-    fetchImpl.mockImplementationOnce(async (url, options) => original(url, options));
     // Once a valid token and identity are obtained, a zero-model result is not connected.
     fetchImpl.mockImplementation(async (url, options) =>
       url === `${RESOURCE}/models` ? Response.json({ models: [] }) : original(url, options));
