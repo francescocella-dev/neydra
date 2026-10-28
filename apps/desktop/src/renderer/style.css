@@ -97,6 +97,9 @@ button.connection-indicator { display: inline-flex; align-items: center; gap: 8p
   .mini-layout.telemetry-collapsed { grid-template-areas: "stage chat"; grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
   .mini-layout.chat-collapsed { grid-template-areas: "stage" "status"; grid-template-columns: minmax(0, 1fr); }
   .mini-layout.chat-collapsed.telemetry-collapsed { grid-template-areas: "stage"; grid-template-rows: minmax(0, 1fr); }
+  /* The close control is now in the bottom status row: keep its tooltip above,
+     including while visibility:hidden (its box still contributes to overflow). */
+  .status-heading .control-tooltip { top: auto; bottom: calc(100% + 8px); left: 0; right: auto; }
   .telemetry-zone { flex-direction: row; border-top: 1px solid var(--line); align-items: stretch; }.status-heading { gap: 8px; align-self: start; }.status-details { flex: 1; padding-top: 5px; }.status-details dl { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }.status-details dd { font-size: 14px; }
 }
 @media (max-width: 820px) {

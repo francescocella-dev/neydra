@@ -1,4 +1,4 @@
-> Follow-up corrente: [correzione della navigazione alla demo dopo Escape, 93 test offline](#follow-up-windows-sezione-tecnica-e-annullamento). Gli esiti iniziali sottostanti si riferiscono al redesign di partenza.
+> Follow-up corrente: [overflow del tooltip Stato nelle finestre basse](#follow-up-windows-tooltip-del-pannello-stato). Gli esiti delle sezioni precedenti si riferiscono ai rispettivi candidati.
 
 # Mini — redesign minimale immersivo
 
@@ -165,3 +165,104 @@ npm.cmd run test:desktop
 Se lo stato visibile differisce da «Demo offline annullata», conservare il testo
 osservato e la nuova asserzione per indagare cancellazione/timing, senza cambiare
 l'atteso o saltare il controllo. PR #10 sempre DRAFT; niente merge/release.
+
+## Follow-up Windows: tooltip del pannello Stato
+
+Baseline: `49da83d1e8326e19e1228f07e15acc85271df411`, sullo stesso branch e PR #10
+DRAFT. Il proprietario riferisce check/lint/typecheck/build/preload e **93/93 unit
+PASS** su Windows. Nel suo E2E a 720×480, dopo aver aperto Stato, la shell ha
+`clientHeight:480`, `scrollHeight:485`; documento/body/root e controlli restano
+entro il viewport. È una misura del candidato precedente, non di questa patch.
+
+### Elemento e correzione
+
+L'elemento individuato nel sorgente è **`.status-heading .control-tooltip`**, il
+tooltip del pulsante «Chiudi pannello stato», non il compositore. Sotto 1180 px
+la griglia assegna a Stato una riga inferiore di 78 px. Il suo pulsante resta alto
+44 px e il tooltip ereditava `top:calc(100% + 8px)`: veniva quindi disposto sotto
+il pulsante. Nelle finestre alte fino a 520 px il margine interno inferiore del
+layout è 10 px. Con linea da 21 px, padding e bordi del tooltip, il suo bordo
+inferiore supera la shell di circa 5–6 px (arrotondamenti dipendenti dalla scala).
+`visibility:hidden` conserva il riquadro e il suo contributo allo scroll: questo
+spiega perché il controllo fosse raggiungibile ma la shell risultasse più alta.
+La misura del singolo tooltip su Windows resta da confermare con la diagnostica
+aggiunta; il cloud non ha raggiunto la finestra per acquisirla.
+
+La patch cambia soltanto l'ancoraggio del tooltip nella disposizione con Stato in
+basso: **sopra il pulsante**, con allineamento al suo bordo sinistro. Il riquadro
+può così restare interamente nel viewport anche quando viene mostrato. Nessun
+nuovo `overflow:hidden`, font ridotto, contenuto rimosso, altezza o tolleranza
+alterata. Griglia, riga Stato, compositore, consenso e avviso costi restano
+invariati. Alla larghezza con Stato laterale l'ancoraggio esistente resta valido.
+
+### Regressione e diagnostica solo nei test
+
+- `assertSingleViewport` e il suo file **immutati rispetto alla baseline**.
+  Le chiamate E2E sono avvolte soltanto per allegare geometria in caso di errore,
+  poi rilanciano lo stesso errore.
+- Nei quattro viewport **720×480, 853×573, 1024×688, 1280×860** restano i controlli
+  rigorosi con Stato chiuso, Stato aperto, menu e cronologia lunga interna. Si
+  ricontrolla il layout anche dopo la chiusura di Stato.
+- Nuova regressione sul tooltip: riquadro completo entro il viewport prima
+  dell'hover, poi visibile e completo su hover e su focus indipendente dalla
+  posizione del puntatore. A ogni fase resta la verifica globale e dei controlli.
+- Gli allegati `layout-diagnostic` / `status-tooltip-diagnostic` riportano solo
+  selettori fissi, rettangoli, scroll e proprietà CSS della griglia, dello Stato
+  e del compositore. Nessuna lettura di testi, valori input, attributi, URL,
+  conversazioni o dati account. Utili per confrontare il bordo del tooltip con
+  quello della shell se Windows segnala ancora overflow.
+- Annullamento offline, menu iniziale, consenso, streaming e probe fullscreen/F11
+  sono conservati. Nessuna modifica a OAuth/Responses/main/preload/sicurezza,
+  Mini 3D, asset, font, Blender, Holo o voce. Nessuna richiesta AI reale.
+
+### Esiti effettivi di questa patch
+
+| Controllo | Esito |
+| --- | --- |
+| check, lint, typecheck | PASS |
+| `npm test` | **93/93 PASS, 8 file, zero skip** |
+| build, check preload | PASS (preload verificato in VM con mock Electron) |
+| sintassi bundle main/preload, diff check e confini | PASS |
+| Electron E2E Linux | **BLOCKED prima della prima finestra** |
+| Geometria dei quattro viewport e nuovo E2E Windows | **NON ESEGUITI** |
+
+Tentativo effettivo: `DEBUG=pw:browser npm run test:desktop`, exit 1. Electron:
+
+```text
+FATAL:sandbox/linux/suid/client/setuid_sandbox_host.cc:172
+The SUID sandbox helper binary was found, but is not configured correctly.
+Rather than run without sandboxing I'm aborting now.
+Process failed to launch! (SIGTRAP)
+```
+
+Nessuna modifica a sandbox/permessi SUID per aggirare il blocco. Nessuno
+screenshot o PASS geometrico del candidato inventato; i test jsdom non provano
+l'assenza di overflow reale. La verifica locale rimane necessaria.
+
+### Ripetizione Windows
+
+Da checkout pulito, senza login o richieste AI:
+
+```powershell
+cd D:\WORK\NEYDRA
+git status --short
+git switch feat/desktop-mini-interface
+git pull --ff-only origin feat/desktop-mini-interface
+git rev-parse HEAD
+npm.cmd run check
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
+npm.cmd run check:preload
+npm.cmd run test:desktop
+```
+
+Fermarsi al primo exit code non zero. L'E2E esegue automaticamente le quattro
+dimensioni CSS con Stato aperto/chiuso, tooltip hover/focus, menu e controlli
+fullscreen/F11. In caso di errore conservare l'allegato geometrico JSON in
+`apps/desktop/test-results`, senza sostituire le asserzioni. Dopo l'E2E, verificare
+con `npm.cmd start` finestra/fullscreen e scale Windows 100%, 125%, 150%, tooltip
+intero, compositore/consenso/costi leggibili e F11 fisico. Il reflow CSS non
+certifica il DPI del sistema operativo. **PR #10 sempre DRAFT**, in attesa di
+convalida Windows del proprietario; niente merge o release.

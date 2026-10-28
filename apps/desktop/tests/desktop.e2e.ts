@@ -1,6 +1,7 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { collectLayoutDiagnostic } from './helpers/layout-diagnostic';
 import { assertSingleViewport } from './helpers/viewport';
 import { observeFullscreen, type FullscreenPhase } from './helpers/fullscreen-probe';
 
@@ -9,6 +10,13 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
   const desktop = await electron.launch({ args: [resolve('.')], env: launchEnv, chromiumSandbox: true });
   try {
     const page = await desktop.firstWindow();
+    const assertLayout = async (menuOpen = false) => {
+      try { await assertSingleViewport(page, menuOpen); }
+      catch (error) {
+        await test.info().attach('layout-diagnostic', { body: JSON.stringify(await collectLayoutDiagnostic(page), null, 2), contentType: 'application/json' });
+        throw error;
+      }
+    };
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     const menuButton = page.getByRole('button', { name: 'Apri menu', exact: true });
@@ -31,7 +39,7 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
     await expect(page.locator('.mini-topbar button')).toHaveCount(3);
     const prompt = page.getByLabel('Messaggio per ChatGPT (massimo 2000 caratteri)');
     await prompt.fill('Test locale: il testo deve restare dopo la chiusura.');
-    await assertSingleViewport(page);
+    await assertLayout();
     const originalPrompt = await prompt.elementHandle();
     if (!originalPrompt) throw new Error('Prompt missing');
     await togglePanel('Nascondi chat');
@@ -43,7 +51,7 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
     await togglePanel('Mostra stato');
     await expect(page.locator('.telemetry-zone')).toBeVisible();
     await expect(page.locator('.telemetry-zone').getByText('Non disponibile', { exact: true })).toBeVisible();
-    await assertSingleViewport(page);
+    await assertLayout();
     await togglePanel('Nascondi stato');
     await expect(page.getByRole('button', { name: 'Invia a ChatGPT', exact: true })).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Voce non ancora disponibile', exact: true })).toBeDisabled();
@@ -122,7 +130,7 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
     try {
       await page.getByRole('button', { name: /^Schermo intero/ }).click();
       await assertTransition('button-enter', true, false);
-      await assertSingleViewport(page);
+      await assertLayout();
       await expect(page.getByRole('button', { name: /^Esci da schermo intero/ })).toBeVisible();
       expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true);
       await pressNativeF11('f11-exit', false);
@@ -132,7 +140,7 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
       await fullscreenProbe.evaluate(probe => probe.begin('button-exit'));
       await page.getByRole('button', { name: /^Esci da schermo intero/ }).click();
       await assertTransition('button-exit', false, false);
-      await assertSingleViewport(page);
+      await assertLayout();
       expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true);
     } finally {
       try {
@@ -156,7 +164,7 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
       await page.setViewportSize({ width, height });
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await prompt.fill('x'.repeat(2000));
-      await assertSingleViewport(page);
+      await assertLayout();
       const before = await page.locator('.composer-bar').boundingBox();
       await page.locator('.chat-history').evaluate(element => {
         // Layout fixture only: no real AI. Same plain-message structure, 22 long messages.
@@ -169,13 +177,36 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
         }
         element.scrollTop = element.scrollHeight;
       });
-      await assertSingleViewport(page);
+      await assertLayout();
       expect(await page.locator('.composer-bar').boundingBox()).toEqual(before);
       expect(await page.locator('.chat-history').evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
       await togglePanel('Mostra stato');
-      await assertSingleViewport(page);
-      await openMenu(); await assertSingleViewport(page, true); await closeMenu();
+      await test.step(`Status tooltip remains inside ${width}x${height}`, async () => {
+        // A visibility:hidden tooltip also has a layout box. Check before hover first.
+        await assertLayout();
+        const closeStatus = page.getByRole('button', { name: 'Chiudi pannello stato', exact: true });
+        const tooltip = page.locator('.status-heading .control-tooltip');
+        const assertTooltipInside = async () => {
+          const inside = await tooltip.evaluate(element => {
+            const box = element.getBoundingClientRect();
+            return box.width > 0 && box.height > 0 && box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight;
+          });
+          if (!inside) await test.info().attach('status-tooltip-diagnostic', { body: JSON.stringify(await collectLayoutDiagnostic(page), null, 2), contentType: 'application/json' });
+          expect(inside, 'Complete status tooltip must fit, without clipping').toBe(true);
+        };
+        await assertTooltipInside();
+        await closeStatus.hover();
+        await expect(tooltip).toBeVisible();
+        await assertTooltipInside(); await assertLayout();
+        await page.locator('.brand').hover();
+        await expect(tooltip).toBeHidden();
+        await closeStatus.focus();
+        await expect(tooltip).toBeVisible();
+        await assertTooltipInside(); await assertLayout();
+      });
+      await openMenu(); await assertLayout(true); await closeMenu();
       await togglePanel('Nascondi stato');
+      await assertLayout();
       expect(await page.locator('.energy-one').evaluate(element => getComputedStyle(element).animationName)).toBe('none');
       await page.screenshot({ path: `evidence/mini-minimal-viewport-${label}.png` });
     }
