@@ -37,6 +37,8 @@ impilata su `feat/desktop-chatgpt-plan` (#9). Nessun merge o release.
   residui. Un controllo aggiuntivo riduce il movimento per la finestra corrente;
   non viene simulata persistenza delle impostazioni.
 
+> Follow-up F11 su Windows: [analisi del percorso tastiera, nuovo test e comandi di ripetizione](../apps/desktop/evidence/F11_WINDOWS_REPORT.md).
+
 ## Fullscreen e confini Electron
 
 Il precedente HTML `requestFullscreen()` è sostituito da

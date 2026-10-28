@@ -1,6 +1,7 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { observeFullscreen, type FullscreenPhase } from './helpers/fullscreen-probe';
 
 test('Mini UI, native fullscreen, offline stream and Electron security', async () => {
   const launchEnv = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => key !== 'ELECTRON_RUN_AS_NODE' && value !== undefined)) as Record<string, string>;
@@ -70,16 +71,53 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
     await page.evaluate(() => { window.open('https://example.org'); });
     expect(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
 
-    await page.getByRole('button', { name: /^Schermo intero/ }).click();
-    await expect.poll(() => desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFullScreen())).toBe(true);
-    await expect(page.getByRole('button', { name: /^Esci da schermo intero/ })).toBeVisible();
-    expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true);
-    await page.keyboard.press('F11');
-    await expect.poll(() => desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFullScreen())).toBe(false);
-    await page.keyboard.press('F11');
-    await expect.poll(() => desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFullScreen())).toBe(true);
-    await page.getByRole('button', { name: /^Esci da schermo intero/ }).click();
-    await expect.poll(() => desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFullScreen())).toBe(false);
+    const fullscreenProbe = await desktop.evaluateHandle(observeFullscreen);
+    const assertTransition = async (phase: FullscreenPhase, expected: boolean, keyboard: boolean) => {
+      await expect.poll(async () => {
+        const snapshot = await fullscreenProbe.evaluate(probe => probe.snapshot());
+        return {
+          fullscreen: snapshot.fullscreen,
+          nativeEvent: snapshot.transitions.some(event => event.phase === phase && event.fullscreen === expected),
+          calls: snapshot.calls.filter(call => call.phase === phase).map(call => ({ enabled: call.enabled, threw: call.threw })),
+          handledF11: !keyboard || snapshot.inputs.some(input => input.phase === phase && input.down && !input.repeat && !input.modified && input.prevented && input.focused),
+        };
+      }, { message: `Native fullscreen path: ${phase}` }).toEqual({
+        fullscreen: expected, nativeEvent: true, calls: [{ enabled: expected, threw: false }], handledF11: true,
+      });
+    };
+    const pressNativeF11 = async (phase: 'f11-exit' | 'f11-enter', expected: boolean) => {
+      await fullscreenProbe.evaluate((probe, next) => { probe.begin(next); probe.focus(); }, phase);
+      await expect.poll(async () => {
+        const snapshot = await fullscreenProbe.evaluate(probe => probe.snapshot());
+        return snapshot.focused && snapshot.contentsFocused && !snapshot.minimized;
+      }, { message: `Native window and WebContents focus before ${phase}` }).toBe(true);
+      // CDP keyboard.press omits the native key code and skips Electron's pre-handler.
+      // Inject keyDown/keyUp through Electron; never invoke the shortcut or setter directly.
+      await fullscreenProbe.evaluate(probe => probe.pressF11());
+      await assertTransition(phase, expected, true);
+    };
+    try {
+      await page.getByRole('button', { name: /^Schermo intero/ }).click();
+      await assertTransition('button-enter', true, false);
+      await expect(page.getByRole('button', { name: /^Esci da schermo intero/ })).toBeVisible();
+      expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+      await pressNativeF11('f11-exit', false);
+      await expect(page.getByRole('button', { name: /^Schermo intero/ })).toBeVisible();
+      await pressNativeF11('f11-enter', true);
+      await expect(page.getByRole('button', { name: /^Esci da schermo intero/ })).toBeVisible();
+      await fullscreenProbe.evaluate(probe => probe.begin('button-exit'));
+      await page.getByRole('button', { name: /^Esci da schermo intero/ }).click();
+      await assertTransition('button-exit', false, false);
+      expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+    } finally {
+      try {
+        const snapshot = await fullscreenProbe.evaluate(probe => probe.snapshot());
+        await test.info().attach('fullscreen-diagnostic', { body: JSON.stringify(snapshot, null, 2), contentType: 'application/json' });
+      } finally {
+        await fullscreenProbe.evaluate(probe => probe.dispose());
+        await fullscreenProbe.dispose();
+      }
+    }
 
     await page.reload();
     await expect(page.getByRole('heading', { name: 'Conversazione', exact: true })).toBeVisible();

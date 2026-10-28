@@ -1,3 +1,5 @@
+> Follow-up corrente: [F11 Windows: evidenza del proprietario, correzione del driver E2E e nuova diagnostica](F11_WINDOWS_REPORT.md). Le tabelle seguenti conservano gli esiti del commit iniziale della fase 2.
+
 # Mini Premium Tech — report fase 2
 
 **28 ottobre 2026 — candidato per review, Windows e approvazione visiva pendenti.**
