@@ -51,10 +51,10 @@ test('real Electron bridge, security, offline stream, interruption and reload', 
     await expect(page.getByRole('status')).toHaveText('Demo offline completata');
     await page.locator('#mini-settings').getByRole('button', { name: 'Chiudi' }).click();
     await mkdir('evidence', { recursive: true });
-    await page.screenshot({ path: 'evidence/desktop-offline.png' });
+    await page.screenshot({ path: 'evidence/mini-ui-offline.png' });
     await page.setViewportSize({ width: 760, height: 800 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.screenshot({ path: 'evidence/desktop-narrow.png' });
+    await page.screenshot({ path: 'evidence/mini-ui-narrow.png' });
     expect(errors).toEqual([]);
 
     // Test a real renderer-initiated navigation LAST: Chromium can keep
