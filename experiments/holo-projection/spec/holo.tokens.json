@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "id": "neydra.holo",
+  "version": "1.0.0",
+  "status": "visual-direction-approved__implementation-not-validated",
+  "scope": "Holo only; must not modify or recolor Mini",
+  "palette": {
+    "backgroundDeep": "#04101F",
+    "backgroundMid": "#0A1F36",
+    "backgroundGlow": "#12365C",
+    "surface": "#10263D",
+    "surfaceRaised": "#163550",
+    "stroke": "#3C7192",
+    "text": "#EAF8FF",
+    "textMuted": "#A8CBDF",
+    "primary": "#75DCFF",
+    "ice": "#D5F6FF",
+    "electric": "#348DFF",
+    "rim": "#B8EDFF",
+    "listening": "#8EEFD8",
+    "processing": "#60B6FF",
+    "speaking": "#D5F6FF",
+    "interrupted": "#B5D9EB",
+    "error": "#FFAFBD",
+    "focus": "#91EAFF"
+  },
+  "typography": {
+    "bodyFamily": "Manrope",
+    "displayFamily": "Oxanium",
+    "bodyMinPx": 16,
+    "metaMinPx": 14
+  },
+  "radiusPx": {
+    "control": 10,
+    "panel": 16
+  },
+  "motion": {
+    "durationsMs": {
+      "materialize": 1350,
+      "dissolve": 650,
+      "gazeShift": 210,
+      "blinkClose": 105,
+      "blinkOpen": 145,
+      "stateTransition": 240,
+      "interruptRelease": 180,
+      "statusPulse": 2400,
+      "errorSignal": 450
+    },
+    "easing": {
+      "standard": "cubic-bezier(0.2, 0.75, 0.25, 1)",
+      "apparition": "cubic-bezier(0.16, 1, 0.3, 1)",
+      "exit": "cubic-bezier(0.4, 0, 1, 1)"
+    },
+    "guidelines": {
+      "idleYawMaxDeg": 1.5,
+      "idlePitchMaxDeg": 1,
+      "eyeGazeMaxDeg": 5,
+      "listeningTiltMaxDeg": 3,
+      "trackingYawMaxDeg": 22,
+      "trackingPitchMaxDeg": 12,
+      "blinkIntervalSecRange": [
+        3,
+        7
+      ],
+      "idleCycleSecRange": [
+        5,
+        8
+      ],
+      "visemeTransitionMsRange": [
+        50,
+        120
+      ]
+    }
+  },
+  "hologram": {
+    "faceTint": "#75DCFF",
+    "centerTint": "#D5F6FF",
+    "edgeTint": "#B8EDFF",
+    "faceOpacityStartingPoint": 0.62,
+    "faceOpacityTuneRange": [
+      0.45,
+      0.72
+    ],
+    "particleOpacityTuneRange": [
+      0.015,
+      0.06
+    ],
+    "rimIntensityTuneRange": [
+      0.3,
+      0.65
+    ],
+    "backgroundScanlineOpacityMax": 0.045,
+    "projectionOrigin": "bottom-center virtual optical aperture; not a physical webcam",
+    "facialBoundary": "upper cranium visible; jaw and lower contour dissolve into beam",
+    "appearance": "single continuous smooth bald neutral face, slightly feminine, no eyebrows, no drawn lips, no hair or neck/body"
+  },
+  "stateAccent": {
+    "idle": "primary",
+    "listening": "listening",
+    "processing": "processing",
+    "speaking": "speaking",
+    "interrupted": "interrupted",
+    "error": "error"
+  },
+  "accessibility": {
+    "reducedMotion": "no perpetual particles, drift or beam sweep; keep speech mouth, intentional blink and necessary state feedback",
+    "textMinContrast": "WCAG AA 4.5:1 normal text; validate rendered overlay contrast",
+    "uiNotObscuredByBeam": true,
+    "statusNotConveyedByColorAlone": true
+  }
+}

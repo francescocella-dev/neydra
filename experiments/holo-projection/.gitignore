@@ -1,0 +1,9 @@
+node_modules/
+dist/
+local/
+evidence/*.png
+evidence/*.webm
+evidence/*.mp4
+__pycache__/
+*.local.log
+*.tsbuildinfo
