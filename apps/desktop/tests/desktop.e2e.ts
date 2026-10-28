@@ -49,7 +49,9 @@ test('real Electron bridge, security, offline stream, interruption and reload', 
     // navigation to finish even when Electron has retained the trusted URL.
     // Do not fake the navigation event or relax any production security rule.
     const navigation = await desktop.evaluate(({ BrowserWindow }) => {
-      const contents = BrowserWindow.getAllWindows()[0].webContents;
+      const browserWindow = BrowserWindow.getAllWindows()[0];
+      if (!browserWindow) throw new Error('Electron window missing during navigation verification');
+      const contents = browserWindow.webContents;
       return new Promise<{ url: string; prevented: boolean } | null>(resolve => {
         const timer = setTimeout(() => resolve(null), 3_000);
         contents.once('will-frame-navigate', details => {
