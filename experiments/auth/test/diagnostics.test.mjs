@@ -46,17 +46,23 @@ for (const fixture of [
   { name: '206 with plain text', status: 206, category: 'other',
     type: 'text/plain; private=private-header-fixture', body: 'private body fixture' },
 ]) {
-  test(`safe diagnostics: ${fixture.name} stops without reading body`, async () => {
+  test(`safe diagnostics: ${fixture.name} is blocked without leaking contents`, async () => {
     const response = new Response(fixture.body, { status: fixture.status, headers: {
       ...(fixture.type ? { 'content-type': fixture.type } : {}),
       'x-request-id': requestId,
       'set-cookie': 'fixture-session=private-cookie-fixture',
       'x-arbitrary': 'private-header-fixture',
     } });
+    // A 200 with missing MIME and a body now attempts strict SSE validation of
+    // the SAME response; all other cases remain unread. This fixture is plain
+    // text, not SSE, and therefore cannot produce response.completed.
+    const strictMissingMime = fixture.status === 200 &&
+      fixture.category === 'missing' && fixture.body !== null;
     await assert.rejects(simulatedTextRequest(response), error => {
       assert.ok(error instanceof Stop);
       const evidence = failureEvidence(error);
-      assert.deepEqual(evidence, { status: 'BLOCKED', reason: 'expected_event_stream',
+      assert.deepEqual(evidence, { status: 'BLOCKED',
+        reason: strictMissingMime ? 'truncated_stream_frame' : 'expected_event_stream',
         httpStatus: fixture.status, bodyShape: null, contentTypeCategory: fixture.category,
         hasBodyStream: fixture.body !== null, requestId });
       const serialized = JSON.stringify(evidence);
@@ -64,7 +70,8 @@ for (const fixture of [
         assert.equal(serialized.includes(sensitive), false);
       return true;
     });
-    assert.equal(response.bodyUsed, false, 'unexpected body is never inspected or logged');
+    assert.equal(response.bodyUsed, strictMissingMime,
+      'only missing-MIME HTTP 200 reads the body for strict SSE validation');
   });
 }
 
