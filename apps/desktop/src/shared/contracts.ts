@@ -21,7 +21,10 @@ export const connectDiagnosticSchema = z.strictObject({
     'invalid_issued_client', 'invalid_state', 'consent_denied', 'consent_timeout',
     'cancelled', 'transport_or_timeout', 'http_rejected', 'unexpected_model_catalog',
     'missing_json_body', 'oversized_json', 'invalid_host_identifier',
-    'loopback_unavailable', 'no_authorized_models', 'local_error']),
+    'loopback_unavailable', 'no_authorized_models',
+    'subscription_sharing_user_not_eligible', 'subscription_sharing_usage_limit_exceeded',
+    'subscription_sharing_usage_unavailable', 'chatpass_v2_scope_not_authorized',
+    'chatpass_v2_invalid_authorization_context', 'local_error']),
   httpStatus: z.number().int().min(100).max(599).optional(),
 });
 export const connectionSchema = z.strictObject({
