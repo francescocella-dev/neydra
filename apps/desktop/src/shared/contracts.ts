@@ -12,7 +12,24 @@ export const startSchema = z.strictObject({
 export const modelSchema = z.string().regex(/^[A-Za-z0-9._-]{1,128}$/);
 export const realSchema = startSchema.extend({ model: modelSchema, consent: z.literal('included-plan-checked') });
 export const connectSchema = z.strictObject({ consent: z.literal('system-browser') });
-export const connectionSchema = z.strictObject({ state: z.enum(['disconnected', 'connecting', 'connected']), models: z.array(z.strictObject({ slug: modelSchema, name: z.string().min(1).max(128) })).max(512) });
+// Fixed diagnostic vocabulary only: never forward raw OAuth errors or secrets to the renderer.
+export const connectDiagnosticSchema = z.strictObject({
+  phase: z.enum(['registration-load', 'listener', 'browser', 'callback',
+    'client-save', 'token-exchange', 'account-save', 'model-catalog']),
+  code: z.enum(['invalid_grant', 'invalid_client', 'identity_verification_failed',
+    'plan_permission_missing', 'account_changed', 'invalid_token_response',
+    'invalid_issued_client', 'invalid_state', 'consent_denied', 'consent_timeout',
+    'cancelled', 'transport_or_timeout', 'http_rejected', 'unexpected_model_catalog',
+    'missing_json_body', 'oversized_json', 'invalid_host_identifier',
+    'loopback_unavailable', 'no_authorized_models', 'local_error']),
+  httpStatus: z.number().int().min(100).max(599).optional(),
+});
+export const connectionSchema = z.strictObject({
+  state: z.enum(['disconnected', 'connecting', 'connected']),
+  models: z.array(z.strictObject({ slug: modelSchema, name: z.string().min(1).max(128) })).max(512),
+  diagnostic: connectDiagnosticSchema.optional(),
+});
+export type ConnectDiagnostic = z.infer<typeof connectDiagnosticSchema>;
 export type Connection = z.infer<typeof connectionSchema>;
 export type RealRequest = z.infer<typeof realSchema>;
 export const cancelSchema = z.strictObject({ requestId: requestIdSchema });
