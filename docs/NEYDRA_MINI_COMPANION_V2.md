@@ -1,5 +1,7 @@
 # NEYDRA Mini — Companion V2
 
+> Specifica corrente: [due modalità fisse, drag abolito](NEYDRA_REDUCTION_MODES.md). Il testo seguente è storico e non autorizza più il trascinamento.
+
 PR #10 **DRAFT**, branch `feat/desktop-mini-interface`. Baseline Windows
 `c36b29bf2de023beb39a130fd30d37df546f0b32`: check/lint/typecheck/build, **142/142
 unit**, tre preload ed E2E immersivo PASS. Il JSON del proprietario dimostra

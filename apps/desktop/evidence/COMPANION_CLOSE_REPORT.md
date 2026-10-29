@@ -1,5 +1,7 @@
 # Companion V2 — chiusura nativa e recupero main
 
+> Specifica corrente: [due modalità fisse, drag abolito](FIXED_REDUCTION_REPORT.md). Il testo seguente è storico e non autorizza più il trascinamento.
+
 29 ottobre 2026. Branch `feat/desktop-mini-interface`, PR #10 **DRAFT**.
 Baseline `c36b29bf2de023beb39a130fd30d37df546f0b32`. Nessuna nuova misura Windows
 del candidato corrente; il report distingue fatti del proprietario e prove offline.

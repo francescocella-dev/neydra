@@ -108,3 +108,9 @@ button.connection-indicator { display: inline-flex; align-items: center; gap: 8p
 @media (max-height: 520px) { .mini-shell { grid-template-rows: 56px minmax(0, 1fr); }.mini-layout { padding-bottom: 10px; }.chat-composer { padding-top: 4px; padding-bottom: 8px; }.consent-label { margin-top: 7px; margin-bottom: 5px; }.chat-notice { margin-bottom: 4px; } }
 .motion-paused .energy { animation: none; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+.reduction-settings { border: 1px solid #ffffff20; border-radius: 12px; padding: 14px; margin: 0 0 20px; }
+.reduction-settings legend { font-weight: 600; padding: 0 6px; }
+.reduction-settings label { display: flex; align-items: center; gap: 10px; padding: 10px 0; line-height: 1.5; }
+.reduction-settings input { flex: 0 0 auto; accent-color: #e79a54; }
+.reduction-settings p { font-size: .9rem; line-height: 1.5; color: #ccc3ba; }

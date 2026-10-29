@@ -1,3 +1,4 @@
+import { ReductionSettings } from './ReductionSettings';
 import { useEffect, useRef, type ReactNode, type Ref } from 'react';
 import { Icon, IconButton } from './Icon';
 import oxaniumLicense from './fonts/OFL-oxanium.txt?raw';
@@ -48,7 +49,7 @@ export function SettingsPanel({ open, onDismiss, section, onSection, accountRef,
         <div className="settings-content">
           <section hidden={section !== 'account'} aria-label="ChatGPT e modelli"><h3>ChatGPT e modelli</h3><div ref={accountRef} /></section>
           <section hidden={section !== 'theme'} aria-label="Tema e aspetto"><h3>Tema Mini</h3><div className="palette-preview" aria-label="Palette nero, grafite, arancio e bianco morbido"><i/><i/><i/><i/></div><label className="check-label"><input type="checkbox" checked={reducedMotion} onChange={event => onReducedMotion(event.target.checked)} /> Riduci le animazioni di sfondo</label><p className="muted">La preferenza di movimento ridotto di Windows è sempre rispettata. Questa scelta dura per la finestra corrente.</p><p>Oxanium e Manrope sono inclusi localmente. Nessun CDN.</p></section>
-          <section hidden={section !== 'settings'} aria-label="Impostazioni"><h3>Voce e ascolto</h3><p>Voce non ancora disponibile. Microfono e videocamera disattivati.</p><h3>Sessione</h3><p>Conversazione solo in memoria. Nessuna preferenza o cronologia viene salvata su disco da questa interfaccia.</p></section>
+          <section hidden={section !== 'settings'} aria-label="Impostazioni"><ReductionSettings /><h3>Voce e ascolto</h3><p>Voce non ancora disponibile. Microfono e videocamera disattivati.</p><h3>Sessione</h3><p>Conversazione e cronologia restano in memoria. Di questa interfaccia viene salvata localmente soltanto la modalità di riduzione.</p></section>
           <section hidden={section !== 'technical'} aria-label="Informazioni e strumenti tecnici"><h3>Informazioni</h3><p>Pre-alpha. Modello 3D e voce non integrati. Il companion usa un segno temporaneo NEYDRA.</p>{children}<details className="font-licenses"><summary>Licenze dei font locali · SIL OFL 1.1</summary><h4>Oxanium</h4><pre>{oxaniumLicense}</pre><h4>Manrope</h4><pre>{manropeLicense}</pre></details></section>
         </div>
       </div>

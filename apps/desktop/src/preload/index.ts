@@ -1,9 +1,16 @@
+import { REDUCTION_CHANNEL, reductionInputSchema, reductionResultSchema } from '../shared/reduction-contracts';
 import { WINDOW_CHANNELS, fullscreenInputSchema, windowResultSchema, windowStateSchema } from '../shared/window-contracts';
 import { contextBridge, ipcRenderer } from 'electron';
 import { COMPANION_CHANNEL, companionResultSchema } from '../shared/companion-contracts';
 import { CHANNELS, connectionSchema, connectSchema, realSchema, cancelSchema, responseSchema, resultSchema, startSchema, statusSchema, streamEventSchema, type DesktopBridge } from '../shared/contracts';
 
 const bridge = Object.freeze<DesktopBridge>({
+  async getReductionPreference() { return reductionResultSchema.parse(await ipcRenderer.invoke(REDUCTION_CHANNEL, { type: 'get' })); },
+  async setReductionMode(input) {
+    const parsed = reductionInputSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, code: 'invalid-request' };
+    return reductionResultSchema.parse(await ipcRenderer.invoke(REDUCTION_CHANNEL, { type: 'set', mode: parsed.data.mode }));
+  },
   async reduceToMini() { return companionResultSchema.parse(await ipcRenderer.invoke(COMPANION_CHANNEL, { type: 'reduce' })); },
   async getWindowState() { return windowResultSchema.parse(await ipcRenderer.invoke(WINDOW_CHANNELS.invoke, { type: 'getState' })); },
   async setFullscreen(input) {

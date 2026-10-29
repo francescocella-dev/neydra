@@ -1,3 +1,4 @@
+import { REDUCTION_CHANNEL } from '../src/shared/reduction-contracts';
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { BrowserWindowConstructorOptions } from 'electron';
@@ -10,7 +11,7 @@ import { APP_URL, CSP } from '../src/main/security';
 
 const state = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, payload: unknown) => Promise<unknown>>(),
-  handshake: true,
+  handshake: true, preferenceMode: 'circle' as 'circle' | 'island',
 }));
 class MockWindow extends EventEmitter {
   static windows: MockWindow[] = [];
@@ -23,7 +24,7 @@ class MockWindow extends EventEmitter {
     setWindowOpenHandler: vi.fn(), send: vi.fn((...args: unknown[]) => { void args; if (this.contentsDestroyed) throw new TypeError('Object has been destroyed'); }), isDestroyed: () => this.contentsDestroyed,
   });
   position = { x: 100, y: 100 };
-  constructor(readonly options: BrowserWindowConstructorOptions) { super(); MockWindow.windows.push(this); }
+  constructor(readonly options: BrowserWindowConstructorOptions) { super(); this.position = { x: options.x ?? 100, y: options.y ?? 100 }; MockWindow.windows.push(this); }
   removeMenu = vi.fn(); isDestroyed = () => this.destroyed; isVisible = () => this.visible;
   isMinimized = () => this.minimized; isMaximized = () => false; isFullScreen = () => false;
   restore = vi.fn(() => { this.minimized = false; this.emit('restore'); }); setFullScreen = vi.fn();
@@ -65,9 +66,13 @@ const app = Object.assign(new EventEmitter(), {
   enableSandbox: vi.fn(), requestSingleInstanceLock: vi.fn(() => true), whenReady: vi.fn(async () => {}),
   quit: vi.fn(), exit: vi.fn(), getPath: vi.fn(() => '/tmp/neydra-synthetic-tests'),
 });
+vi.mock('../src/main/reduction-preference', () => ({ reductionPreference: () => ({
+  get: async () => ({ mode: state.preferenceMode, status: 'saved' as const }),
+  set: async (mode: 'circle' | 'island') => { state.preferenceMode = mode; return { mode, status: 'saved' as const }; },
+}) }));
 const display = Object.assign(new EventEmitter(), {
   getAllDisplays: vi.fn(() => [{ workArea: { x: 0, y: 0, width: 1920, height: 1040 } }]),
-  getCursorScreenPoint: vi.fn(() => ({ x: 100, y: 100 })),
+  getDisplayMatching: vi.fn(() => ({ id: 1, scaleFactor: 1, workArea: display.getAllDisplays()[0]?.workArea ?? { x: 0, y: 0, width: 0, height: 0 } })),
 });
 const sessions = new Map<string, ReturnType<typeof makeSession>>();
 function makeSession() {
@@ -88,7 +93,7 @@ function invoke(window: MockWindow, channel: string, payload: unknown, frame = w
 beforeEach(async () => {
   vi.useRealTimers(); vi.resetModules(); vi.clearAllMocks(); state.handlers.clear(); sessions.clear(); MockWindow.windows = [];
   app.removeAllListeners(); display.removeAllListeners(); state.handshake = true; app.requestSingleInstanceLock.mockReturnValue(true);
-  MockWindow.focused = null;
+  MockWindow.focused = null; state.preferenceMode = 'circle';
   await import('../src/main/index');
   await vi.waitFor(() => expect(MockWindow.windows).toHaveLength(1));
 });
@@ -161,6 +166,7 @@ it('offers role-bound Open/Exit satellites, recovers on native close/crash/hide,
 it('never hides main if renderer initialization is missing; has no automated retry after readiness timeout', async () => {
   state.handshake = false; vi.useFakeTimers();
   const main = MockWindow.windows[0]!, pending = invoke(main, COMPANION_CHANNEL, { type: 'reduce' });
+  await Promise.resolve();
   expect(main.visible).toBe(true); await vi.advanceTimersByTimeAsync(5000);
   expect(await pending).toEqual({ ok: false, code: 'unavailable' });
   expect(main.hide).not.toHaveBeenCalled(); expect(MockWindow.windows[1]!.destroyed).toBe(true);
@@ -199,14 +205,14 @@ it('recovers a minimized main on creation failure and cancels a late reduction w
   const main = MockWindow.windows[0]!; main.minimize();
   await vi.advanceTimersByTimeAsync(5000);
   expect(main.visible).toBe(true); expect(main.minimized).toBe(false); expect(MockWindow.windows[1]!.destroyed).toBe(true);
-  main.minimize(); const next = MockWindow.windows.at(-1)!;
+  main.minimize(); await Promise.resolve(); const next = MockWindow.windows.at(-1)!;
   main.restore(); expect(main.visible).toBe(true);
   main.minimize(); // A new minimize while the cancelled factory is still pending.
   await invoke(next, COMPANION_CHANNEL, { type: 'ready' }); await vi.advanceTimersByTimeAsync(0);
   expect(main.visible).toBe(true); expect(main.minimized).toBe(false); expect(next.destroyed).toBe(true);
   vi.useRealTimers();
 });
-it('satellite focus stays within the menu; outside blur, Escape and drag cancel it without changing core geometry or exiting', async () => {
+it('satellite focus stays within the menu; outside blur, Escape cancels it without changing core geometry or exiting', async () => {
   const main = MockWindow.windows[0]!; await invoke(main, COMPANION_CHANNEL, { type: 'reduce' });
   const core = MockWindow.windows[1]!, before = core.getBounds();
   await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: true } });
@@ -218,8 +224,8 @@ it('satellite focus stays within the menu; outside blur, Escape and drag cancel 
   expect(open.setIgnoreMouseEvents).toHaveBeenLastCalledWith(true); await vi.advanceTimersByTimeAsync(150);
   expect(open.visible || exit.visible).toBe(false); expect(MockWindow.focused).toBeNull();
   await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
-  await invoke(core, COMPANION_CHANNEL, { type: 'dragStart' }); expect(open.visible || exit.visible).toBe(false);
-  await invoke(core, COMPANION_CHANNEL, { type: 'dragCancel' });
+  expect(await invoke(core, COMPANION_CHANNEL, { type: 'dragStart' })).toMatchObject({ code: 'invalid-request' });
+  await invoke(core, COMPANION_CHANNEL, { type: 'dismissMenu' }); await vi.advanceTimersByTimeAsync(150);
   await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
   await invoke(exit, ORBIT_CHANNEL, { type: 'dismiss' }); await vi.advanceTimersByTimeAsync(150);
   expect(open.visible || exit.visible).toBe(false); expect(MockWindow.focused).toBe(core);
@@ -250,7 +256,8 @@ it('does not hide an already hidden satellite when reusing the native orbital wi
   }
 });
 
-async function hiddenOrbit() {
+async function hiddenOrbit(mode: 'circle' | 'island' = 'circle') {
+  state.preferenceMode = mode;
   const main = MockWindow.windows[0]!;
   await invoke(main, COMPANION_CHANNEL, { type: 'reduce' });
   const core = MockWindow.windows[1]!;
@@ -260,8 +267,8 @@ async function hiddenOrbit() {
   expect(open.visible || exit.visible).toBe(false);
   return { main, core, open, exit };
 }
-it('native close with hidden satellites restores the original focused main before asynchronous native destruction', async () => {
-  const { main, core, open, exit } = await hiddenOrbit();
+it.each(['circle', 'island'] as const)('native close %s with hidden satellites restores the original focused main before asynchronous native destruction', async mode => {
+  const { main, core, open, exit } = await hiddenOrbit(mode);
   const contents = main.webContents, session = main.options.webPreferences?.session;
   const reload = vi.spyOn(main, 'loadURL');
   main.show.mockClear(); main.focus.mockClear();
@@ -361,6 +368,7 @@ it('does not reveal or send IPC to a satellite whose contents die during showIna
 it('aborts a pending core handshake when contents die and leaves no readiness timer or automatic retry', async () => {
   state.handshake = false; vi.useFakeTimers();
   const main = MockWindow.windows[0]!, pending = invoke(main, COMPANION_CHANNEL, { type: 'reduce' });
+  await vi.waitFor(() => expect(MockWindow.windows[1]).toBeDefined());
   const core = MockWindow.windows[1]!;
   core.destroyContents();
   expect(await pending).toEqual({ ok: false, code: 'unavailable' });
@@ -369,4 +377,42 @@ it('aborts a pending core handshake when contents die and leaves no readiness ti
   expect(MockWindow.focused).toBe(main); expect(main.focus).toHaveBeenCalledOnce();
   expect(MockWindow.windows).toHaveLength(2); expect(app.quit).not.toHaveBeenCalled();
   vi.useRealTimers();
+});
+
+it('restricts persisted reduction preference to main and recreates only the companion on the next reduction', async () => {
+  const { main, core, open } = await hiddenOrbit();
+  expect(await invoke(core, REDUCTION_CHANNEL, { type: 'get' })).toMatchObject({ code: 'untrusted-sender' });
+  expect(await invoke(open, REDUCTION_CHANNEL, { type: 'set', mode: 'island' })).toMatchObject({ code: 'untrusted-sender' });
+  expect(await invoke(main, REDUCTION_CHANNEL, { type: 'set', mode: 'island', x: 30 })).toMatchObject({ code: 'invalid-request' });
+  expect(await invoke(main, REDUCTION_CHANNEL, { type: 'set', mode: 'unknown' })).toMatchObject({ code: 'invalid-request' });
+  expect(await invoke(main, REDUCTION_CHANNEL, { type: 'get' }, { url: APP_URL })).toMatchObject({ code: 'untrusted-sender' });
+  expect(await invoke(core, COMPANION_CHANNEL, { type: 'mode', token: 'synthetic' })).toMatchObject({ code: 'invalid-request' });
+  expect(await invoke(core, COMPANION_CHANNEL, { type: 'mode' })).toEqual({ ok: true, mode: 'circle' });
+  expect(await invoke(main, REDUCTION_CHANNEL, { type: 'set', mode: 'island' })).toMatchObject({ ok: true, preference: { mode: 'island' } });
+  expect(core.destroyed).toBe(false); // Preference never changes the current companion.
+  await invoke(core, COMPANION_CHANNEL, { type: 'restore' });
+  const contents = main.webContents;
+  await invoke(main, COMPANION_CHANNEL, { type: 'reduce' });
+  const island = MockWindow.windows.find(window => window !== core && window.options.title === 'NEYDRA Island')!;
+  expect(core.destroyed).toBe(true); expect(island.visible).toBe(true); expect(main.visible).toBe(false);
+  expect(island.options).toMatchObject({ width: 240, height: 64, movable: false, frame: false, transparent: true,
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  expect(await invoke(island, COMPANION_CHANNEL, { type: 'mode' })).toEqual({ ok: true, mode: 'island' });
+  await invoke(island, COMPANION_CHANNEL, { type: 'restore' });
+  expect(main.webContents).toBe(contents); expect(main.visible).toBe(true); expect(app.quit).not.toHaveBeenCalled();
+});
+it('uses matched display workArea and normal main bounds when minimized, not its window corner or pointer', async () => {
+  const main = MockWindow.windows[0]!;
+  display.getDisplayMatching.mockReturnValue({ id: 7, scaleFactor: 1.25, workArea: { x: -1536, y: -200, width: 1536, height: 816 } });
+  await invoke(main, COMPANION_CHANNEL, { type: 'reduce' });
+  const core = MockWindow.windows[1]!;
+  expect(core.getBounds()).toMatchObject({ x: -144, y: 472, width: 120, height: 120 });
+  expect(core.options.movable).toBe(false);
+  const before = core.getBounds(), moves = vi.spyOn(core, 'setPosition');
+  await invoke(core, COMPANION_CHANNEL, { type: 'restore' });
+  main.position = { x: -600, y: -150 }; main.minimize();
+  await vi.waitFor(() => expect(core.visible).toBe(true));
+  expect(display.getDisplayMatching).toHaveBeenCalledWith(main.getNormalBounds());
+  expect(core.getBounds()).toEqual(before); expect(moves).not.toHaveBeenCalled();
+  display.getDisplayMatching.mockReturnValue({ id: 1, scaleFactor: 1, workArea: { x: 0, y: 0, width: 1920, height: 1040 } });
 });

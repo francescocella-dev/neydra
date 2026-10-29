@@ -18,12 +18,11 @@ function windowFixture(bounds: Rect, visible = true) {
 function fixture() {
   const main = windowFixture({ x: 100, y: 100, width: 1280, height: 860 });
   const floating = windowFixture({ x: 1200, y: 800, width: 120, height: 120 }, false);
-  let cursor = { x: 100, y: 100 };
   let areas = [{ x: 0, y: 0, width: 1920, height: 1040 }];
   const create = vi.fn(async () => floating), quit = vi.fn();
-  const controller = new CompanionController(main, create, () => areas, () => cursor, quit);
+  const controller = new CompanionController(main, create, () => areas, quit);
   return { controller, main, floating, create, quit,
-    cursor(point: typeof cursor) { cursor = point; }, areas(next: Rect[]) { areas = next; } };
+    areas(next: Rect[]) { areas = next; } };
 }
 
 it('keeps main alive; shows and focuses a single loaded companion before hiding main; restores it without reload', async () => {
@@ -65,31 +64,16 @@ it('recovers main on factory/show failure, unexpected close/hide/crash, and quit
   const orphan = fixture(); await orphan.controller.reduce(); orphan.main.destroy(); orphan.controller.recover();
   expect(orphan.quit).toHaveBeenCalledOnce();
 });
-it('distinguishes a click/jitter from a drag, keeps drag sticky on return to origin and cancels without opening', async () => {
+it('reanchors only for changed work area and stays fixed between reductions, independent of main position', async () => {
   const f = fixture(); await f.controller.reduce();
-  f.controller.beginDrag(); f.cursor({ x: 102, y: 101 }); f.controller.moveDrag(); f.controller.endDrag();
-  expect(f.main.isVisible()).toBe(true);
-  await f.controller.reduce();
-  f.controller.beginDrag(); f.cursor({ x: 122, y: 121 }); f.controller.moveDrag();
-  expect(f.floating.getBounds()).toMatchObject({ x: 1220, y: 820 });
-  f.cursor({ x: 102, y: 101 }); f.controller.moveDrag(); f.controller.endDrag();
-  expect(f.main.isVisible()).toBe(false);
-  f.controller.beginDrag(); f.controller.cancelDrag();
-  expect(f.controller.endDrag()).toEqual({ ok: false, code: 'unavailable' });
-  expect(f.main.isVisible()).toBe(false);
-  f.controller.beginDrag(); f.cursor({ x: 202, y: 201 }); f.controller.endDrag();
-  expect(f.floating.getBounds()).toMatchObject({ x: 1300, y: 900 }); // Final point needs no intermediate move.
-});
-it('clamps dragging to real work areas and rehomes on display removal/DPI/taskbar changes, including negative monitors', async () => {
-  const f = fixture();
-  f.areas([{ x: -1280, y: -100, width: 1280, height: 960 }, { x: 0, y: 0, width: 1920, height: 1040 }]);
-  await f.controller.reduce(); f.controller.beginDrag(); f.cursor({ x: -3000, y: -2000 }); f.controller.moveDrag();
-  expect(f.floating.getBounds()).toMatchObject({ x: -1280, y: -100 });
-  f.controller.endDrag(); expect(f.main.isVisible()).toBe(false);
-  f.areas([{ x: 0, y: 0, width: 1024, height: 688 }]); f.controller.displaysChanged();
-  expect(f.floating.getBounds()).toMatchObject({ x: 0, y: 0 });
-  f.floating.setPosition(950, 650); f.controller.displaysChanged();
-  expect(f.floating.getBounds()).toMatchObject({ x: 904, y: 568 });
+  expect(f.floating.getBounds()).toMatchObject({ x: 1776, y: 896 });
+  f.floating.setPosition.mockClear(); f.controller.restore(); f.main.setPosition(-5000, -5000);
+  await f.controller.reduce(); f.controller.displaysChanged();
+  expect(f.floating.setPosition).not.toHaveBeenCalled();
+  f.areas([{ x: -1280, y: -100, width: 1280, height: 960 }]); f.controller.displaysChanged();
+  expect(f.floating.getBounds()).toMatchObject({ x: -144, y: 716 });
+  expect(f.floating.setPosition).toHaveBeenCalledOnce();
+  f.controller.displaysChanged(); expect(f.floating.setPosition).toHaveBeenCalledOnce();
   f.areas([]); f.controller.displaysChanged(); expect(f.main.isVisible()).toBe(true);
 });
 it('never places the circle in monitor gaps or an area too small; restores a minimized/offscreen main and preserves fullscreen', async () => {
@@ -157,11 +141,26 @@ it('detaches a closing but still native-live companion before recovery and ignor
 it('restores main despite an overlay callback failure, then reports the genuine error', async () => {
   const f = fixture(), notification = vi.fn();
   const controller = new CompanionController(f.main, f.create, () => [{ x: 0, y: 0, width: 1920, height: 1040 }],
-    () => ({ x: 0, y: 0 }), f.quit, notification);
+    f.quit, notification);
   await controller.reduce();
   notification.mockImplementationOnce(() => { throw new Error('synthetic overlay failure'); });
   expect(() => controller.recover(f.floating)).toThrow('synthetic overlay failure');
   expect(f.main.isVisible()).toBe(true); expect(f.main.focus).toHaveBeenCalledOnce(); expect(f.quit).not.toHaveBeenCalled();
   controller.dispose(); controller.dispose(); controller.recover(f.floating);
   expect(f.main.focus).toHaveBeenCalledOnce();
+});
+
+it('cancels reduction while a persisted preference is pending, without creating a late recovery window', async () => {
+  const f = fixture(); let choose!: (value: 'island') => void;
+  const pending = f.controller.reduce(new Promise<'island'>(resolve => { choose = resolve; }));
+  f.controller.restore(); choose('island');
+  expect(await pending).toMatchObject({ code: 'unavailable' }); expect(f.create).not.toHaveBeenCalled();
+  expect(f.main.isVisible()).toBe(true);
+});
+it('rejects every removed drag command and exposes no movement methods', async () => {
+  const f = fixture();
+  for (const type of ['dragStart', 'dragMove', 'dragEnd', 'dragCancel']) {
+    expect(await companionCommand({ type }, 'companion', f.controller, vi.fn())).toMatchObject({ code: 'invalid-request' });
+  }
+  for (const name of ['beginDrag', 'moveDrag', 'endDrag', 'cancelDrag']) expect(Reflect.get(f.controller, name)).toBeUndefined();
 });

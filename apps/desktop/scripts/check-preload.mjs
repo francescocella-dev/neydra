@@ -11,12 +11,14 @@ runInNewContext(source, {
     assert.equal(name, 'electron', 'Preload must not import Node or external modules');
     return {
       contextBridge: { exposeInMainWorld(name, bridge) { assert.equal(name, 'neydra'); exposed = bridge; } },
-      ipcRenderer: { async invoke() { return { ok: true, status }; }, on() {}, removeListener() {} },
+      ipcRenderer: { async invoke(channel) { return channel === 'neydra:reduction:v1:invoke' ? { ok: true, preference: { mode: 'circle', status: 'default' } } : { ok: true, status }; }, on() {}, removeListener() {} },
     };
   },
 });
-assert.deepEqual(Object.keys(exposed).sort(), ['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'getWindowState', 'onEvent', 'onWindowState', 'reduceToMini', 'resetChat', 'setFullscreen', 'startChatGPT', 'startOfflineDemo']);
+assert.deepEqual(Object.keys(exposed).sort(), ['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getReductionPreference', 'getStatus', 'getWindowState', 'onEvent', 'onWindowState', 'reduceToMini', 'resetChat', 'setFullscreen', 'setReductionMode', 'startChatGPT', 'startOfflineDemo']);
 assert.equal((await exposed.getStatus()).mode, 'offline');
+assert.equal((await exposed.getReductionPreference()).preference.mode, 'circle');
+assert.equal((await exposed.setReductionMode({ mode: 'unknown' })).code, 'invalid-request');
 assert.equal((await exposed.startOfflineDemo({ requestId: 'invalid', prompt: 'test' })).ok, false);
 console.log('Bundled preload structure: PASS (VM with mocked Electron; not a runtime sandbox test)');
 
@@ -27,14 +29,16 @@ runInNewContext(await readFile('dist/preload/companion.cjs', 'utf8'), {
     assert.equal(name, 'electron', 'Companion preload must not import Node or external modules');
     return {
       contextBridge: { exposeInMainWorld(name, bridge) { assert.equal(name, 'neydraCompanion'); companion = bridge; } },
-      ipcRenderer: { async invoke(channel, payload) { companionCalls.push({ channel, payload }); return { ok: true }; } },
+      ipcRenderer: { async invoke(channel, payload) { companionCalls.push({ channel, payload }); return payload.type === 'mode' ? { ok: true, mode: 'circle' } : { ok: true }; } },
     };
   },
 });
-assert.deepEqual(Object.keys(companion).sort(), ['beginDrag', 'cancelDrag', 'closeMenu', 'endDrag', 'moveDrag', 'navigateMenu', 'onMenuState', 'openMenu', 'ready', 'restore']);
+assert.deepEqual(Object.keys(companion).sort(), ['closeMenu', 'getMode', 'navigateMenu', 'onMenuState', 'openMenu', 'ready', 'restore']);
 assert.equal(Object.isFrozen(companion), true);
 await companion.restore();
 assert.equal(JSON.stringify(companionCalls), JSON.stringify([{ channel: 'neydra:companion:v1:invoke', payload: { type: 'restore' } }]));
+assert.equal((await companion.getMode()).mode, 'circle');
+assert.equal(typeof companion.beginDrag, 'undefined');
 console.log('Bundled companion preload: PASS (minimal bridge; no account or chat API)');
 
 let orbit;

@@ -3,7 +3,7 @@ import { _electron as electron } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const phases = new Set(['idle', 'pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture', 'focus', 'blur', 'resize', 'menu-open', 'menu-close']);
+const phases = new Set(['idle', 'pointerdown', 'pointermove', 'pointerup', 'focus', 'blur', 'resize', 'menu-open', 'menu-close']);
 const samples = [];
 let desktop, core, timer, closed = false, chain = Promise.resolve();
 async function record(phase) {
@@ -23,7 +23,7 @@ async function record(phase) {
     const renderer = await core.evaluate(() => {
       const button = document.getElementById('companion'), box = button.getBoundingClientRect(), style = getComputedStyle(button);
       return { width: box.width, height: box.height, x: box.x, y: box.y, transform: style.transform, appearance: style.appearance,
-        dpr: devicePixelRatio, viewport: { width: innerWidth, height: innerHeight }, captured: button.hasPointerCapture(1) };
+        dpr: devicePixelRatio, viewport: { width: innerWidth, height: innerHeight } };
     });
     const satellites = await Promise.all(desktop.windows().filter(page => page.url() === 'app://orbit/index.html').map(page => page.evaluate(() => {
       const button = document.getElementById('action'), box = button.getBoundingClientRect();
@@ -44,7 +44,7 @@ try {
   await core.exposeFunction('recordCompanionGeometry', phase => { chain = chain.then(() => record(phase)); });
   await core.evaluate(() => {
     let lastMove = 0;
-    for (const phase of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture', 'focus', 'blur', 'resize']) {
+    for (const phase of ['pointerdown', 'pointermove', 'pointerup', 'focus', 'blur', 'resize']) {
       window.addEventListener(phase, () => {
         if (phase === 'pointermove' && performance.now() - lastMove < 100) return;
         if (phase === 'pointermove') lastMove = performance.now();
@@ -54,7 +54,7 @@ try {
     window.neydraCompanion.onMenuState(({ open }) => { void window.recordCompanionGeometry(open ? 'menu-open' : 'menu-close'); });
   });
   await record('idle');
-  console.log('Diagnostica per 45 secondi: usa il mouse fisico, trascina, apri/chiudi il menu e cambia monitor. Nessun login o invio AI.');
+  console.log('Diagnostica per 45 secondi: usa il mouse fisico, prova gesti senza spostamenti, apri/chiudi il menu e cambia monitor. Nessun login o invio AI.');
   await Promise.race([new Promise(resolve => { timer = setTimeout(resolve, 45000); }), desktop.waitForEvent('close', { timeout: 0 }).then(() => { closed = true; })]);
   clearTimeout(timer); await chain;
   await mkdir('evidence', { recursive: true });

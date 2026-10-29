@@ -1,4 +1,5 @@
 import { _electron as electron, expect } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { companionGeometry, satelliteGeometryProblems, satelliteShape } from './helpers/companion-geometry';
 import { test } from './helpers/companion-test';
@@ -8,14 +9,30 @@ import type { ElectronApplication } from '@playwright/test';
 
 const ORBIT = 'app://orbit/index.html';
 
-test('companion lifecycle V2: minimize, stable geometry, orbital menu and session continuity', async ({ geometry }) => {
+for (const mode of ['circle', 'island'] as const) {
+
+test(`companion ${mode}: fixed anchor, ten openings, native recovery and persisted preference`, async ({ geometry }) => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => key !== 'ELECTRON_RUN_AS_NODE' && value !== undefined)) as Record<string, string>;
   let launched: ElectronApplication | undefined, exited = false;
   let nativeProbe: Awaited<ReturnType<typeof installOrbitNativeProbe>> | undefined;
   let lifecycleProbe: Awaited<ReturnType<typeof installCompanionLifecycleProbe>> | undefined;
+  const profile = test.info().outputPath('profile');
+  await mkdir(profile, { recursive: true });
+  const launch = () => electron.launch({ args: [resolve('.'), `--user-data-dir=${profile}`], env, chromiumSandbox: true });
   try {
-    const desktop = launched = await electron.launch({ args: [resolve('.')], env, chromiumSandbox: true });
+    const desktop = launched = await launch();
+    expect(resolve(await desktop.evaluate(({ app }) => app.getPath('userData')))).toBe(profile);
     const main = await desktop.firstWindow();
+    await main.getByRole('button', { name: 'Apri menu', exact: true }).click();
+    await main.getByRole('button', { name: 'Impostazioni', exact: true }).click();
+    const circleChoice = main.getByRole('radio', { name: 'Cerchio Mini — in basso a destra' });
+    const islandChoice = main.getByRole('radio', { name: 'NEYDRA Island — in alto al centro' });
+    await expect(circleChoice).toBeEnabled();
+    if (mode === 'circle') { await islandChoice.check(); await expect(main.locator('#reduction-notice')).toContainText('Preferenza salvata'); }
+    await (mode === 'circle' ? circleChoice : islandChoice).check();
+    await expect(main.locator('#reduction-notice')).toContainText('Preferenza salvata');
+    await expect(mode === 'circle' ? circleChoice : islandChoice).toBeChecked();
+    await main.getByRole('button', { name: 'Chiudi menu' }).click();
     nativeProbe = await installOrbitNativeProbe(desktop);
     const prompt = main.getByLabel('Messaggio per ChatGPT (massimo 2000 caratteri)');
     await prompt.fill('Bozza sintetica locale, nessun invio');
@@ -47,13 +64,24 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
     await reduced(); let core = await firstCore;
     const coreId = (await state()).coreId!;
     lifecycleProbe = await installCompanionLifecycleProbe(desktop, { main: mainId, core: coreId });
+    let fixedCore: unknown;
     const stable = async (phase: string) => {
       const snapshot = await companionGeometry(desktop);
       const { native, renderer } = snapshot;
+      const measuredCore = { bounds: native.bounds, content: native.content, viewport: renderer?.viewport, dpr: renderer?.dpr };
+      fixedCore ??= measuredCore; expect(measuredCore).toEqual(fixedCore);
       geometry.push({ phase, ...snapshot, operations: await nativeProbe!.evaluate(probe => probe.drain()), lifecycle: await lifecycleProbe!.evaluate(probe => probe.drain()) });
-      expect(native.bounds).toMatchObject({ width: 120, height: 120 }); expect(native.content).toMatchObject({ width: 120, height: 120 });
-      expect(renderer).toMatchObject({ width: 112, height: 112, x: 4, y: 4, radius: '50%', transform: 'none', appearance: 'none' });
+      if (mode === 'circle') {
+        expect(native.bounds).toMatchObject({ width: 120, height: 120 }); expect(native.content).toMatchObject({ width: 120, height: 120 });
+      }
+      expect(renderer).toMatchObject({ width: mode === 'circle' ? 112 : 232, height: mode === 'circle' ? 112 : 56,
+        x: 4, y: 4, radius: mode === 'circle' ? '50%' : '28px', transform: 'none', appearance: 'none' });
+      const area = await desktop.evaluate(({ BrowserWindow, screen }, id) => {
+        const main = BrowserWindow.fromId(id)!; return screen.getDisplayMatching(main.isMinimized() ? main.getNormalBounds() : main.getBounds()).workArea;
+      }, mainId);
       const box = native.bounds!;
+      expect(box.x).toBe(mode === 'circle' ? Math.round(area.x + area.width - box.width - Math.min(24, Math.floor((area.width - box.width) / 2))) : Math.round(area.x + (area.width - box.width) / 2));
+      expect(box.y).toBe(mode === 'circle' ? Math.round(area.y + area.height - box.height - Math.min(24, Math.floor((area.height - box.height) / 2))) : Math.round(area.y + Math.min(8, Math.floor((area.height - box.height) / 2))));
       expect(native.areas.some(area => box.x >= area.x && box.y >= area.y && box.x + box.width <= area.x + area.width && box.y + box.height <= area.y + area.height)).toBe(true);
       expect(satelliteGeometryProblems(snapshot)).toEqual([]);
       return satelliteShape(snapshot);
@@ -62,33 +90,24 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
     expect(await core.evaluate(() => ({ mainBridge: typeof window.neydra, orbitBridge: typeof window.neydraOrbit,
       require: typeof Reflect.get(window, 'require'), process: typeof Reflect.get(window, 'process'), methods: Object.keys(window.neydraCompanion).sort() })))
       .toEqual({ mainBridge: 'undefined', orbitBridge: 'undefined', require: 'undefined', process: 'undefined',
-        methods: ['beginDrag', 'cancelDrag', 'closeMenu', 'endDrag', 'moveDrag', 'navigateMenu', 'onMenuState', 'openMenu', 'ready', 'restore'] });
+        methods: ['closeMenu', 'getMode', 'navigateMenu', 'onMenuState', 'openMenu', 'ready', 'restore'] });
     expect(await desktop.evaluate(({ app }) => app.commandLine.hasSwitch('no-sandbox'))).toBe(false);
     if (process.platform === 'win32' || process.platform === 'darwin') {
       await expect.poll(() => desktop.evaluate(({ app, BrowserWindow }, id) => {
         const pid = BrowserWindow.fromId(id)!.webContents.getOSProcessId(); return app.getAppMetrics().find(metric => metric.pid === pid)?.sandboxed;
       }, coreId)).toBe(true);
     }
-    // Only the OS cursor reading is simulated: CDP does not move the physical
-    // cursor. Real renderer, IPC, controller and native setPosition are retained.
-    const probe = await desktop.evaluateHandle(({ screen }) => {
-      const original = screen.getCursorScreenPoint; let point: { x: number; y: number } | undefined;
-      screen.getCursorScreenPoint = () => point ?? original.call(screen);
-      return { point(x: number, y: number) { point = { x, y }; }, reset() { point = undefined; }, dispose() { screen.getCursorScreenPoint = original; } };
-    });
-    try {
-      await stable('idle'); await core.getByRole('button').hover(); await stable('hover');
-      const { before, area } = await desktop.evaluate(({ BrowserWindow, screen }, id) => {
-        const before = BrowserWindow.fromId(id)!.getBounds(); return { before, area: screen.getDisplayMatching(before).workArea };
-      }, coreId);
-      const target = { x: area.x + Math.min(24, area.width - 120), y: area.y + Math.min(24, area.height - 120) };
-      await probe.evaluate(p => p.point(500, 500)); await core.mouse.move(60, 60); await core.mouse.down();
-      await core.evaluate(() => window.neydraCompanion.ready()); await stable('pressed');
-      await probe.evaluate((p, point) => p.point(point.x, point.y), { x: 500 + target.x - before.x, y: 500 + target.y - before.y });
-      await core.mouse.move(62, 62); await core.evaluate(() => window.neydraCompanion.ready()); await stable('drag');
-      await core.mouse.up(); await core.evaluate(() => window.neydraCompanion.ready());
-      await expect.poll(() => desktop.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)!.getPosition(), coreId)).toEqual([target.x, target.y]);
-      await stable('released'); await probe.evaluate(p => p.reset());
+    expect(await core.evaluate(() => window.neydraCompanion.getMode())).toEqual({ ok: true, mode });
+    const fixedGesture = async () => {
+      const before = await desktop.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)!.getBounds(), (await state()).coreId!);
+      await core.mouse.move(mode === 'circle' ? 60 : 120, 30); await core.mouse.down();
+      await core.mouse.move(before.width + 40, -20, { steps: 5 }); await core.mouse.up();
+      await core.evaluate(() => window.neydraCompanion.ready());
+      expect(await desktop.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)!.getBounds(), (await state()).coreId!)).toEqual(before);
+      await reduced(); await stable('fixed-after-mouse-gesture');
+    };
+    await stable('idle'); await core.getByRole('button').hover(); await stable('hover');
+    await fixedGesture();
       await core.getByRole('button').click(); await restored();
       await main.getByRole('button', { name: 'Schermo intero', exact: true }).click();
       await expect(main.locator('.mini-topbar').getByRole('button', { name: 'Riduci a Mini', exact: true })).toBeVisible();
@@ -111,6 +130,7 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
       let menu: Awaited<ReturnType<typeof orbital>>;
       let baseline: Awaited<ReturnType<typeof stable>> | undefined;
       for (let cycle = 1; cycle <= 5; ++cycle) {
+        await fixedGesture();
         menu = await orbital();
         const shape = await stable(`cycle-${cycle}-menu-open`); expect(shape).toHaveLength(2);
         baseline ??= shape;
@@ -154,7 +174,15 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
       // Schedule the DOM activation only to let the test transport return before app.quit.
       await menu.exit.getByRole('menuitem').evaluate(button => { setTimeout(() => (button as HTMLButtonElement).click(), 50); });
       await closed; exited = true;
-    } finally { if (!exited) { await probe.evaluate(p => p.dispose()).catch(() => {}); await probe.dispose(); } }
+      // Same isolated profile, new process: only the preference survives restart.
+      const restarted = launched = await launch(); exited = false;
+      const restartedMain = await restarted.firstWindow();
+      expect(resolve(await restarted.evaluate(({ app }) => app.getPath('userData')))).toBe(profile);
+      expect(await restartedMain.evaluate(() => window.neydra.getReductionPreference())).toMatchObject({ ok: true, preference: { mode, status: 'saved' } });
+      await restartedMain.getByRole('button', { name: 'Apri menu', exact: true }).click();
+      await restartedMain.getByRole('button', { name: 'Impostazioni', exact: true }).click();
+      await expect(restartedMain.getByRole('radio', { name: mode === 'circle' ? 'Cerchio Mini — in basso a destra' : 'NEYDRA Island — in alto al centro' })).toBeChecked();
+      await restarted.close(); exited = true;
   } catch (error) {
     const failure = launched && await companionGeometry(launched).catch(() => undefined);
     if (failure) geometry.push({ phase: 'failure', ...failure });
@@ -169,3 +197,5 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
     if (!exited) await launched?.close();
   }
 });
+
+}

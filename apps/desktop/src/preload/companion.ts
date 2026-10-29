@@ -1,11 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { COMPANION_CHANNEL, COMPANION_MENU_EVENT, companionMenuSchema, companionResultSchema, menuInputSchema, menuDirectionSchema, type CompanionBridge } from '../shared/companion-contracts';
+import { COMPANION_CHANNEL, COMPANION_MENU_EVENT, companionMenuSchema, companionResultSchema, companionModeResultSchema, menuInputSchema, menuDirectionSchema, type CompanionBridge } from '../shared/companion-contracts';
 
 const invoke = async (type: string) => companionResultSchema.parse(await ipcRenderer.invoke(COMPANION_CHANNEL, { type }));
 contextBridge.exposeInMainWorld('neydraCompanion', Object.freeze<CompanionBridge>({
   ready: () => invoke('ready'),
-  restore: () => invoke('restore'), beginDrag: () => invoke('dragStart'), moveDrag: () => invoke('dragMove'),
-  endDrag: () => invoke('dragEnd'), cancelDrag: () => invoke('dragCancel'),
+  restore: () => invoke('restore'),
+  getMode: async () => companionModeResultSchema.parse(await ipcRenderer.invoke(COMPANION_CHANNEL, { type: 'mode' })),
   async openMenu(input = { keyboard: false }) {
     const parsed = menuInputSchema.safeParse(input);
     if (!parsed.success) return { ok: false, code: 'invalid-request' };

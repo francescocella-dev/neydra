@@ -1,8 +1,11 @@
+import { REDUCTION_CHANNEL, reductionCommandSchema, type ReductionMode } from '../shared/reduction-contracts';
+import { reductionPreference } from './reduction-preference';
+import { anchoredPosition, companionSize } from './companion-placement';
 import { app, BrowserWindow, ipcMain, screen } from 'electron';
 import { join } from 'node:path';
-import { COMPANION_CHANNEL, COMPANION_MENU_EVENT } from '../shared/companion-contracts';
+import { COMPANION_CHANNEL, COMPANION_MENU_EVENT, companionCommandSchema } from '../shared/companion-contracts';
 import { ORBIT_CHANNEL, ORBIT_EVENT, type OrbitRole } from '../shared/orbit-contracts';
-import { CompanionController, companionCommand, COMPANION_SIZE } from './companion-controller';
+import { CompanionController, companionCommand } from './companion-controller';
 import { OrbitController, orbitCommand, SATELLITE_SIZE, type Satellite } from './orbit-controller';
 import { companionAsset, COMPANION_URL, orbitAsset, ORBIT_URL, trustedCompanion, trustedOrbit } from './companion-security';
 import { rendererSession } from './renderer-session';
@@ -11,11 +14,14 @@ import { rendererPreferences, trustedSender } from './security';
 export function createCompanionHost(main: BrowserWindow) {
   const companionSession = rendererSession('neydra-companion', join(__dirname, '../companion'), companionAsset);
   const orbitSession = rendererSession('neydra-orbit', join(__dirname, '../orbit'), orbitAsset);
+  const preferences = reductionPreference(app.getPath('userData'));
+  let coreMode: ReductionMode = 'circle';
   let core: BrowserWindow | undefined;
   let disposed = false;
   let coreReady: (() => void) | undefined;
   let blurTimer: ReturnType<typeof setTimeout> | undefined;
   const satellites = new Map<number, { role: OrbitRole; window: BrowserWindow; parent: BrowserWindow; ready?: () => void; timer?: ReturnType<typeof setTimeout> }>();
+  const matchedDisplay = () => screen.getDisplayMatching(main.isMinimized() ? main.getNormalBounds() : main.getBounds());
   const areas = () => screen.getAllDisplays().map(display => display.workArea);
   const closing = new WeakSet<BrowserWindow>(), destroying = new WeakSet<BrowserWindow>();
   const alive = (window: BrowserWindow) => !disposed && !closing.has(window) && !window.isDestroyed() && !window.webContents.isDestroyed();
@@ -66,15 +72,20 @@ export function createCompanionHost(main: BrowserWindow) {
     try { await Promise.all([window.loadURL(url), ready]); }
     finally { clearTimeout(timer); window.removeListener('closed', aborted); contents.removeListener('destroyed', aborted); register(); }
   };
-  const fixedOptions = (size: number) => ({ width: size, height: size, minWidth: size, maxWidth: size, minHeight: size, maxHeight: size,
+  const fixedOptions = (size: number | { width: number; height: number }) => {
+    const { width, height } = typeof size === 'number' ? { width: size, height: size } : size;
+    return { width, height, minWidth: width, maxWidth: width, minHeight: height, maxHeight: height,
     show: false, frame: false, transparent: true, backgroundColor: '#00000000', alwaysOnTop: true, skipTaskbar: true,
-    resizable: false, minimizable: false, maximizable: false, fullscreenable: false, hasShadow: false });
+    resizable: false, minimizable: false, maximizable: false, fullscreenable: false, hasShadow: false }; };
 
-  const controller = new CompanionController(main, async () => {
-    const bounds = main.isMinimized() ? main.getNormalBounds() : main.getBounds();
-    const floating = new BrowserWindow({ ...fixedOptions(COMPANION_SIZE), title: 'NEYDRA Mini',
-      x: bounds.x + bounds.width - COMPANION_SIZE - 24, y: bounds.y + bounds.height - COMPANION_SIZE - 24,
+  const controller = new CompanionController(main, async mode => {
+    const size = companionSize(mode), display = matchedDisplay();
+    const position = anchoredPosition({ x: 0, y: 0, ...size }, display.workArea, mode);
+    if (!position) throw new Error('No companion work area');
+    const floating = new BrowserWindow({ ...fixedOptions(size), ...position, movable: false,
+      title: mode === 'circle' ? 'NEYDRA Mini' : 'NEYDRA Island',
       webPreferences: { ...rendererPreferences, session: companionSession, preload: join(__dirname, '../preload/companion.cjs') } });
+    coreMode = mode;
     core = floating; secure(floating);
     let retired = false;
     const recover = () => {
@@ -108,13 +119,12 @@ export function createCompanionHost(main: BrowserWindow) {
       if (!main.isDestroyed() && !main.isVisible()) controller.recover();
       else orbit.close();
     });
-    floating.on('moved', () => { if (alive(floating) && floating.isVisible()) { orbit.close(); if (!controller.reposition()) controller.recover(); } });
     floating.on('unresponsive', failed);
     floating.webContents.on('render-process-gone', failed);
     floating.webContents.on('preload-error', failed);
     try { await loaded(floating, COMPANION_URL, ready => { if (core === floating) coreReady = ready; }); return floating; }
     catch { failed(); throw new Error('Companion unavailable'); }
-  }, areas, () => screen.getCursorScreenPoint(), () => app.quit(), () => orbit.close());
+  }, areas, () => app.quit(), () => orbit.close(), matchedDisplay);
 
   const orbit = new OrbitController(() => usableCore()?.getBounds(), areas, async role => {
     const parent = usableCore();
@@ -165,11 +175,21 @@ export function createCompanionHost(main: BrowserWindow) {
   }, open => { if (core) send(core, COMPANION_MENU_EVENT, { open }); },
   () => usableCore()?.focus(), () => { controller.restore(); }, () => app.quit());
 
+  const reduce = () => controller.reduce(preferences.get().then(preference => preference.mode));
+  ipcMain.handle(REDUCTION_CHANNEL, async (event, payload: unknown) => {
+    if (disposed || main.isDestroyed() || main.webContents.isDestroyed()) return { ok: false, code: 'unavailable' };
+    if (!trustedSender(event.sender.id, main.webContents.id, event.senderFrame?.url, event.senderFrame === main.webContents.mainFrame)) return { ok: false, code: 'untrusted-sender' };
+    const parsed = reductionCommandSchema.safeParse(payload);
+    if (!parsed.success) return { ok: false, code: 'invalid-request' };
+    return { ok: true, preference: parsed.data.type === 'get' ? await preferences.get() : await preferences.set(parsed.data.mode) };
+  });
   ipcMain.handle(COMPANION_CHANNEL, (event, payload: unknown) => {
     if (disposed || main.isDestroyed() || main.webContents.isDestroyed()) return { ok: false, code: 'unavailable' };
     const source = trustedSender(event.sender.id, main.webContents.id, event.senderFrame?.url, event.senderFrame === main.webContents.mainFrame) ? 'main'
       : core && alive(core) && trustedCompanion(event.sender.id, core.webContents.id, event.senderFrame?.url, event.senderFrame === core.webContents.mainFrame) ? 'companion' : undefined;
-    return companionCommand(payload, source, controller, keyboard => orbit.toggle(keyboard), () => coreReady?.(), () => orbit.close(true, true), direction => orbit.navigate(direction));
+    const parsed = companionCommandSchema.safeParse(payload);
+    if (source === 'companion' && parsed.success && parsed.data.type === 'mode') return { ok: true, mode: coreMode };
+    return companionCommand(payload, source, controller, keyboard => orbit.toggle(keyboard), () => coreReady?.(), () => orbit.close(true, true), direction => orbit.navigate(direction), reduce);
   });
   ipcMain.handle(ORBIT_CHANNEL, (event, payload: unknown) => {
     if (disposed) return { ok: false, code: 'unavailable' };
@@ -180,7 +200,7 @@ export function createCompanionHost(main: BrowserWindow) {
     catch { orbit.close(true); return { ok: false, code: 'unavailable' }; }
   });
   const minimize = () => {
-    if (!disposed) void controller.reduce().then(result => {
+    if (!disposed) void reduce().then(result => {
       // A restore may cancel a pending creation, followed by another native
       // minimize. Recover that minimized main when the cancelled creation ends.
       if (!result.ok && result.code !== 'busy' && !disposed && !main.isDestroyed() && main.isMinimized()) controller.restore();
@@ -205,7 +225,7 @@ export function createCompanionHost(main: BrowserWindow) {
           try { for (const entry of children) destroy(entry.window); }
           finally {
             main.removeListener('minimize', minimize); main.removeListener('restore', restored);
-            ipcMain.removeHandler(COMPANION_CHANNEL); ipcMain.removeHandler(ORBIT_CHANNEL);
+            ipcMain.removeHandler(COMPANION_CHANNEL); ipcMain.removeHandler(ORBIT_CHANNEL); ipcMain.removeHandler(REDUCTION_CHANNEL);
             companionSession.protocol.unhandle('app'); orbitSession.protocol.unhandle('app');
           }
         }

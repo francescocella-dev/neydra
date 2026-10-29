@@ -7,7 +7,9 @@ import { observeFullscreen, type FullscreenPhase } from './helpers/fullscreen-pr
 
 test('Mini UI, native fullscreen, offline stream and Electron security', async () => {
   const launchEnv = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => key !== 'ELECTRON_RUN_AS_NODE' && value !== undefined)) as Record<string, string>;
-  const desktop = await electron.launch({ args: [resolve('.')], env: launchEnv, chromiumSandbox: true });
+  const profile = test.info().outputPath('profile');
+  await mkdir(profile, { recursive: true });
+  const desktop = await electron.launch({ args: [resolve('.'), `--user-data-dir=${profile}`], env: launchEnv, chromiumSandbox: true });
   try {
     const page = await desktop.firstWindow();
     const assertLayout = async (menuOpen = false) => {
@@ -77,7 +79,7 @@ test('Mini UI, native fullscreen, offline stream and Electron security', async (
     await expect(page.getByRole('button', { name: 'Avvia demo offline' })).toBeEnabled();
     expect(await desktop.evaluate(({ app }) => app.commandLine.hasSwitch('no-sandbox'))).toBe(false);
     expect(await page.evaluate(() => ({ require: typeof Reflect.get(window, 'require'), process: typeof Reflect.get(window, 'process'), keys: Object.keys(window.neydra).sort() })))
-      .toEqual({ require: 'undefined', process: 'undefined', keys: ['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'getWindowState', 'onEvent', 'onWindowState', 'reduceToMini', 'resetChat', 'setFullscreen', 'startChatGPT', 'startOfflineDemo'] });
+      .toEqual({ require: 'undefined', process: 'undefined', keys: ['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getReductionPreference', 'getStatus', 'getWindowState', 'onEvent', 'onWindowState', 'reduceToMini', 'resetChat', 'setFullscreen', 'setReductionMode', 'startChatGPT', 'startOfflineDemo'] });
     expect(await page.evaluate(() => window.neydra.startOfflineDemo({ requestId: 'invalid', prompt: 'test' }))).toEqual({ ok: false, code: 'invalid-request' });
     expect(await page.evaluate(() => window.neydra.setFullscreen({ enabled: 'true' } as never))).toEqual({ ok: false, code: 'invalid-request' });
     const status = await page.evaluate(() => window.neydra.getStatus());

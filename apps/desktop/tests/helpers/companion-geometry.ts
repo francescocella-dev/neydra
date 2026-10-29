@@ -21,7 +21,7 @@ export async function companionGeometry(desktop: ElectronApplication) {
   const renderer = await core?.evaluate(() => {
     const button = document.getElementById('companion')!, box = button.getBoundingClientRect(), style = getComputedStyle(button);
     return { width: box.width, height: box.height, x: box.x, y: box.y, radius: style.borderRadius, transform: style.transform,
-      appearance: style.appearance, dpr: devicePixelRatio, viewport: { width: innerWidth, height: innerHeight }, captured: button.hasPointerCapture(1) };
+      appearance: style.appearance, dpr: devicePixelRatio, viewport: { width: innerWidth, height: innerHeight } };
   }).catch(() => undefined);
   const satellites = await Promise.all(desktop.windows().filter(page => page.url() === 'app://orbit/index.html').map(async page => {
     try {

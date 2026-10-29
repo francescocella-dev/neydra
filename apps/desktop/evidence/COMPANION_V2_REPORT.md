@@ -1,5 +1,7 @@
 # Companion V2 — report di verifica
 
+> Specifica corrente: [due modalità fisse, drag abolito](FIXED_REDUCTION_REPORT.md). Il testo seguente è storico e non autorizza più il trascinamento.
+
 > Follow-up corrente: [chiusura nativa sicura e recupero main](COMPANION_CLOSE_REPORT.md).
 > Il riuso geometrico c36b29 è stato verificato dal proprietario su cinque cicli; il test completo fallisceva poi sulla chiusura.
 > La precedente sezione 72 DIP conserva il report storico e le asserzioni poi corrette.

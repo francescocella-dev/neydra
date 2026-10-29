@@ -20,6 +20,8 @@ function fixture(connected = false) {
   const events = new Set<(event: StreamEvent) => void>();
   const windowEvents = new Set<(state: WindowState) => void>();
   const bridge: DesktopBridge = {
+    getReductionPreference: vi.fn(async () => ({ ok: true, preference: { mode: 'circle', status: 'default' } } as const)),
+    setReductionMode: vi.fn(async ({ mode }) => ({ ok: true, preference: { mode, status: 'saved' } } as const)),
     reduceToMini: vi.fn(async () => ({ ok: true as const })),
     getStatus: vi.fn(async () => desktopStatus), getConnection: vi.fn(async () => connection),
     connectChatGPT: vi.fn(async () => ({ ok: true as const })),
@@ -245,4 +247,22 @@ it('offers Reduce to Mini in the fullscreen topbar using the same guarded launch
   expect(document.querySelector('.mini-topbar')?.contains(reduce)).toBe(true);
   await user.click(reduce); expect(f.bridge.reduceToMini).toHaveBeenCalledOnce();
   expect(f.bridge.connectChatGPT).not.toHaveBeenCalled(); expect(f.bridge.startChatGPT).not.toHaveBeenCalled();
+});
+
+it('offers accessible persisted reduction choices, updates the disclosure and reports safe save fallback', async () => {
+  const { bridge } = fixture(), user = userEvent.setup(); render(<App />);
+  const menu = await openMenu(user); await user.click(menu.getByRole('button', { name: 'Impostazioni' }));
+  const circle = menu.getByRole('radio', { name: 'Cerchio Mini — in basso a destra' });
+  const island = menu.getByRole('radio', { name: 'NEYDRA Island — in alto al centro' });
+  expect((circle as HTMLInputElement).checked).toBe(true);
+  await user.click(island);
+  await waitFor(() => expect((island as HTMLInputElement).checked).toBe(true));
+  expect(bridge.setReductionMode).toHaveBeenCalledWith({ mode: 'island' });
+  expect(menu.getByRole('status').textContent).toContain('prossima riduzione');
+  expect(menu.getByText(/salvata localmente soltanto la modalità/)).toBeTruthy();
+  vi.mocked(bridge.setReductionMode).mockResolvedValueOnce({ ok: true, preference: { mode: 'circle', status: 'save-failed' } });
+  await user.click(circle);
+  await waitFor(() => expect(menu.getByRole('status').textContent).toContain('Salvataggio non riuscito'));
+  expect((circle as HTMLInputElement).checked).toBe(true);
+  expect(bridge.startChatGPT).not.toHaveBeenCalled(); expect(bridge.connectChatGPT).not.toHaveBeenCalled();
 });

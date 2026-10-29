@@ -28,7 +28,7 @@ beforeEach(() => {
 
 it('exposes only the named narrow frozen API, without raw IPC', () => {
   expect(exposedName).toBe('neydra');
-  expect(Object.keys(bridge).sort()).toEqual(['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getStatus', 'getWindowState', 'onEvent', 'onWindowState', 'reduceToMini', 'resetChat', 'setFullscreen', 'startChatGPT', 'startOfflineDemo']);
+  expect(Object.keys(bridge).sort()).toEqual(['cancel', 'cancelConnect', 'connectChatGPT', 'disconnectChatGPT', 'getConnection', 'getReductionPreference', 'getStatus', 'getWindowState', 'onEvent', 'onWindowState', 'reduceToMini', 'resetChat', 'setFullscreen', 'setReductionMode', 'startChatGPT', 'startOfflineDemo']);
   expect(Object.isFrozen(bridge)).toBe(true);
 });
 
@@ -110,8 +110,8 @@ it('exposes a separate minimal companion bridge; validates replies and never sub
   const { COMPANION_CHANNEL } = await import('../src/shared/companion-contracts');
   expect(miniExposedName).toBe('neydraCompanion');
   expect(Object.isFrozen(mini)).toBe(true);
-  expect(Object.keys(mini).sort()).toEqual(['beginDrag', 'cancelDrag', 'closeMenu', 'endDrag', 'moveDrag', 'navigateMenu', 'onMenuState', 'openMenu', 'ready', 'restore']);
-  for (const [method, command] of [['ready', 'ready'], ['beginDrag', 'dragStart'], ['moveDrag', 'dragMove'], ['endDrag', 'dragEnd'], ['cancelDrag', 'dragCancel'], ['closeMenu', 'dismissMenu'], ['restore', 'restore']]) {
+  expect(Object.keys(mini).sort()).toEqual(['closeMenu', 'getMode', 'navigateMenu', 'onMenuState', 'openMenu', 'ready', 'restore']);
+  for (const [method, command] of [['ready', 'ready'], ['closeMenu', 'dismissMenu'], ['restore', 'restore']]) {
     electron.invoke.mockResolvedValueOnce({ ok: true });
     expect(await (mini[method! as keyof CompanionBridge] as () => Promise<unknown>)()).toEqual({ ok: true });
     expect(electron.invoke).toHaveBeenLastCalledWith(COMPANION_CHANNEL, { type: command });
@@ -147,4 +147,18 @@ it('validates menu navigation/state and keeps orbital actions restricted to a di
   eventHandler({}, { phase: 'reveal', account: 'synthetic' }); expect(listener).not.toHaveBeenCalled();
   eventHandler({}, 'reveal'); expect(listener).toHaveBeenCalledWith('reveal'); offVisibility();
   expect(electron.removeListener).toHaveBeenLastCalledWith(ORBIT_EVENT, eventHandler);
+});
+
+it('validates main-only reduction preference input and all returned preference/mode fields', async () => {
+  const { REDUCTION_CHANNEL } = await import('../src/shared/reduction-contracts');
+  expect(await bridge.setReductionMode({ mode: 'island', path: '/arbitrary' } as never)).toMatchObject({ code: 'invalid-request' });
+  expect(await bridge.setReductionMode({ mode: 'unknown' } as never)).toMatchObject({ code: 'invalid-request' });
+  expect(electron.invoke).not.toHaveBeenCalled();
+  electron.invoke.mockResolvedValueOnce({ ok: true, preference: { mode: 'island', status: 'saved' } });
+  expect(await bridge.setReductionMode({ mode: 'island' })).toMatchObject({ preference: { mode: 'island' } });
+  expect(electron.invoke).toHaveBeenLastCalledWith(REDUCTION_CHANNEL, { type: 'set', mode: 'island' });
+  electron.invoke.mockResolvedValueOnce({ ok: true, preference: { mode: 'island', status: 'saved', token: 'synthetic' } });
+  await expect(bridge.getReductionPreference()).rejects.toThrow();
+  electron.invoke.mockResolvedValueOnce({ ok: true, mode: 'island' }); expect(await mini.getMode()).toEqual({ ok: true, mode: 'island' });
+  electron.invoke.mockResolvedValueOnce({ ok: true, mode: 'island', account: 'synthetic' }); await expect(mini.getMode()).rejects.toThrow();
 });
