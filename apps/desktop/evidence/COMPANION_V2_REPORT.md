@@ -1,6 +1,7 @@
 # Companion V2 — report di verifica
 
-> Follow-up corrente: [riuso senza drift e probe nativo](#follow-up-windows-riuso-senza-drift).
+> Follow-up corrente: [chiusura nativa sicura e recupero main](COMPANION_CLOSE_REPORT.md).
+> Il riuso geometrico c36b29 è stato verificato dal proprietario su cinque cicli; il test completo fallisceva poi sulla chiusura.
 > La precedente sezione 72 DIP conserva il report storico e le asserzioni poi corrette.
 > Gli esiti delle sezioni iniziali descrivono il candidato V2 originale.
 

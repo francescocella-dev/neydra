@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { companionGeometry, satelliteGeometryProblems, satelliteShape } from './helpers/companion-geometry';
 import { test } from './helpers/companion-test';
 import { installOrbitNativeProbe } from './helpers/orbit-native-probe';
+import { installCompanionLifecycleProbe } from './helpers/companion-lifecycle-probe';
 import type { ElectronApplication } from '@playwright/test';
 
 const ORBIT = 'app://orbit/index.html';
@@ -11,6 +12,7 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
   const env = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => key !== 'ELECTRON_RUN_AS_NODE' && value !== undefined)) as Record<string, string>;
   let launched: ElectronApplication | undefined, exited = false;
   let nativeProbe: Awaited<ReturnType<typeof installOrbitNativeProbe>> | undefined;
+  let lifecycleProbe: Awaited<ReturnType<typeof installCompanionLifecycleProbe>> | undefined;
   try {
     const desktop = launched = await electron.launch({ args: [resolve('.')], env, chromiumSandbox: true });
     const main = await desktop.firstWindow();
@@ -44,10 +46,11 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
     await desktop.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)!.minimize(), mainId);
     await reduced(); let core = await firstCore;
     const coreId = (await state()).coreId!;
+    lifecycleProbe = await installCompanionLifecycleProbe(desktop, { main: mainId, core: coreId });
     const stable = async (phase: string) => {
       const snapshot = await companionGeometry(desktop);
       const { native, renderer } = snapshot;
-      geometry.push({ phase, ...snapshot, operations: await nativeProbe!.evaluate(probe => probe.drain()) });
+      geometry.push({ phase, ...snapshot, operations: await nativeProbe!.evaluate(probe => probe.drain()), lifecycle: await lifecycleProbe!.evaluate(probe => probe.drain()) });
       expect(native.bounds).toMatchObject({ width: 120, height: 120 }); expect(native.content).toMatchObject({ width: 120, height: 120 });
       expect(renderer).toMatchObject({ width: 112, height: 112, x: 4, y: 4, radius: '50%', transform: 'none', appearance: 'none' });
       const box = native.bounds!;
@@ -136,8 +139,11 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
       menu = await orbital(); await menu.open.getByRole('menuitem').click(); await restored();
       await reduce();
       // Genuine companion close must recover main; its child overlays must vanish.
+      geometry.push({ phase: 'before-native-core-close', state: await state(), lifecycle: await lifecycleProbe.evaluate(probe => probe.drain()) });
       await desktop.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)!.close(), coreId);
       await restored(); expect((await state()).count).toBe(1);
+      geometry.push({ phase: 'after-native-core-close', state: await state(), lifecycle: await lifecycleProbe.evaluate(probe => probe.drain()) });
+      expect(await lifecycleProbe.evaluate(probe => probe.uncaught())).toBe(0);
       const next = desktop.waitForEvent('window'); await reduce(); core = await next;
       await core.getByRole('button').focus(); await core.keyboard.press('Enter'); await restored();
       await reduce(); menu = await orbital();
@@ -154,6 +160,9 @@ test('companion lifecycle V2: minimize, stable geometry, orbital menu and sessio
     if (failure) geometry.push({ phase: 'failure', ...failure });
     throw error;
   } finally {
+    const lifecycle = await lifecycleProbe?.evaluate(probe => { const records = probe.drain(); probe.dispose(); return records; }).catch(() => undefined);
+    if (lifecycle?.length) geometry.push({ phase: 'final-lifecycle', lifecycle });
+    await lifecycleProbe?.dispose().catch(() => {});
     const operations = await nativeProbe?.evaluate(probe => { const records = probe.drain(); probe.dispose(); return records; }).catch(() => undefined);
     if (operations?.length) geometry.push({ phase: 'final-operations', operations });
     await nativeProbe?.dispose().catch(() => {});

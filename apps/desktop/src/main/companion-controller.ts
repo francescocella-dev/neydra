@@ -71,21 +71,26 @@ export class CompanionController {
       this.main.hide(); // Only after a loaded, visible recovery window exists.
       return { ok: true };
     } catch {
-      this.restore();
+      if (epoch === this.epoch) this.restore(); // A close/restore may have already recovered this creation.
       return { ok: false, code: 'unavailable' };
     } finally { this.pending = false; }
   }
 
   restore(): CompanionResult {
     if (this.disposed) return { ok: false, code: 'unavailable' };
+    if (this.restoring) return { ok: true };
     ++this.epoch;
     this.drag = undefined;
     this.mini = false;
     this.restoring = true;
     const restoreFullscreen = this.fullscreenBeforeHide;
     this.fullscreenBeforeHide = false;
+    let mainRestored = false;
     try {
-      this.beforeChange();
+      // Overlay callbacks must never prevent restoration of the original main.
+      // A genuine callback error is rethrown after this critical recovery.
+      let notificationFailure: { error: unknown } | undefined;
+      try { this.beforeChange(); } catch (error) { notificationFailure = { error }; }
       if (this.main.isDestroyed()) throw new Error('Main unavailable');
       if (this.main.isMinimized()) this.main.restore();
       if (restoreFullscreen && !this.main.isFullScreen()) this.main.setFullScreen(true);
@@ -97,9 +102,12 @@ export class CompanionController {
       this.main.show();
       this.main.focus();
       if (!this.main.isVisible()) throw new Error('Main not visible');
+      mainRestored = true;
+      if (notificationFailure) throw notificationFailure.error;
       if (this.floating && !this.floating.isDestroyed()) this.floating.hide();
       return { ok: true };
-    } catch {
+    } catch (error) {
+      if (mainRestored) throw error;
       this.quit(); // Never leave an invisible, unrecoverable process.
       return { ok: false, code: 'unavailable' };
     } finally { this.restoring = false; }
@@ -115,7 +123,12 @@ export class CompanionController {
     return true;
   }
   displaysChanged() { this.beforeChange(); this.drag = undefined; if (this.floating && !this.reposition()) this.restore(); }
-  recover() { if (!this.disposed && (this.mini || this.pending)) this.restore(); }
+  recover(failed?: CompanionWindow) {
+    // Detach a closing native window before restore: it may still report alive
+    // while its webContents are gone. Do not hide/reuse that window again.
+    if (failed && this.floating === failed) this.floating = undefined;
+    if (!this.disposed && !this.restoring && (this.mini || this.pending)) this.restore();
+  }
 
   beginDrag(): CompanionResult {
     if (!this.mini || !this.floating || this.floating.isDestroyed()) return { ok: false, code: 'unavailable' };
@@ -145,10 +158,12 @@ export class CompanionController {
   }
   cancelDrag(): CompanionResult { this.drag = undefined; return { ok: true }; }
   dispose() {
+    if (this.disposed) return;
     this.disposed = true; ++this.epoch; this.drag = undefined; this.mini = false;
-    this.beforeChange();
-    if (this.floating && !this.floating.isDestroyed()) this.floating.destroy();
+    const floating = this.floating;
     this.floating = undefined;
+    try { this.beforeChange(); }
+    finally { if (floating && !floating.isDestroyed()) floating.destroy(); }
   }
 }
 

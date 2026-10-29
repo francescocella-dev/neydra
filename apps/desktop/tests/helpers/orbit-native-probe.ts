@@ -9,14 +9,20 @@ export async function installOrbitNativeProbe(desktop: ElectronApplication) {
     const records: unknown[] = [], disposers: (() => void)[] = [];
     let sequence = 0;
     const record = (window: Window, phase: string, operation: string, target?: { x: number; y: number }) => {
-      if (records.length >= 2048 || window.isDestroyed() || window.webContents.getURL() !== 'app://orbit/index.html') return;
+      if (records.length >= 2048 || window.isDestroyed()) return;
+      const contents = window.webContents;
+      if (contents.isDestroyed()) return;
       try {
+        if (contents.getURL() !== 'app://orbit/index.html') return;
         const bounds = window.getBounds();
         records.push({ sequence: ++sequence, phase, operation, id: window.webContents.id, target,
           bounds, content: window.getContentBounds(), minimum: window.getMinimumSize(), maximum: window.getMaximumSize(),
           scale: screen.getDisplayMatching(bounds).scaleFactor, visible: window.isVisible(), focused: window.isFocused(),
           physicalBounds: process.platform === 'win32' ? screen.dipToScreenRect(window, bounds) : undefined });
-      } catch { /* Closing a native window can race measurement; never capture raw errors. */ }
+      } catch (error) {
+        if (window.isDestroyed() || contents.isDestroyed()) return; // Expected measurement race only.
+        throw error;
+      }
     };
     const created = (_event: unknown, window: Window) => {
       const events = window as unknown as EventEmitter;

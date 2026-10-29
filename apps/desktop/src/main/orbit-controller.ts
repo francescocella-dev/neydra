@@ -52,6 +52,7 @@ export class OrbitController {
   private creating = false;
   private opened = false;
   private disposed = false;
+  private closing = false;
   private selected: OrbitRole = 'open';
   private placementCore: Rect | undefined;
   constructor(private readonly core: () => Rect | undefined, private readonly areas: () => Rect[],
@@ -115,6 +116,7 @@ export class OrbitController {
       }
       if (!this.opened || !this.validate()) throw new Error('Native bounds changed on reveal');
       this.changed(true);
+      if (!this.opened) throw new Error('Menu closed during notification');
       if (keyboard) this.navigate('first');
       return { ok: true };
     } catch {
@@ -134,10 +136,15 @@ export class OrbitController {
     this.close(false); return false;
   }
   close(focusCore = false, animate = false) {
+    const notify = this.opened || this.opening;
     ++this.epoch; this.opened = false; this.opening = false;
-    for (const window of this.windows.values()) if (!window.isDestroyed()) window.conceal(animate);
-    this.changed(false);
-    if (focusCore && !this.disposed) this.focusCore();
+    if (this.closing) return;
+    this.closing = true;
+    try {
+      for (const window of [...this.windows.values()]) if (!window.isDestroyed()) window.conceal(animate);
+      if (notify && !this.disposed) this.changed(false);
+      if (focusCore && !this.disposed) this.focusCore();
+    } finally { this.closing = false; }
   }
   navigate(direction: OrbitDirection): CompanionResult {
     if (!this.opened) return { ok: false, code: 'unavailable' };
@@ -154,9 +161,14 @@ export class OrbitController {
     return { ok: true };
   }
   dispose() {
-    this.disposed = true; this.close();
-    for (const window of this.windows.values()) if (!window.isDestroyed()) window.destroy();
-    this.windows.clear();
+    if (this.disposed) return;
+    this.disposed = true;
+    try { this.close(); }
+    finally {
+      const windows = [...this.windows.values()];
+      this.windows.clear(); // Child closed callbacks cannot iterate a half-torn-down group.
+      for (const window of windows) if (!window.isDestroyed()) window.destroy();
+    }
   }
 }
 

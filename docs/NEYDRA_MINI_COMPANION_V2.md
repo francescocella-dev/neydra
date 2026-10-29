@@ -1,18 +1,19 @@
 # NEYDRA Mini — Companion V2
 
 PR #10 **DRAFT**, branch `feat/desktop-mini-interface`. Baseline Windows
-`b7385921ad1a10d8a252cbb949f016ec1ab430df`: il proprietario ha verificato
-**135/135 unit, check/lint/typecheck/build, tre preload ed E2E immersivo PASS**.
-Il JSON reale a DPR 1,25 mostra satelliti nativi 73×72 / 72×73 alla prima apertura,
-contenuto/viewport 72×72 e pulsanti 48×48 a (12,12). Alla riapertura da tastiera,
-riusando le finestre, diventano 74×72 / 72×74; crescono anche i vincoli letti.
-Lo scostamento CSS di 0,2 px è distinto dalla crescita nativa.
+`c36b29bf2de023beb39a130fd30d37df546f0b32`: check/lint/typecheck/build, **142/142
+unit**, tre preload ed E2E immersivo PASS. Il JSON del proprietario dimostra
+**cinque cicli e dieci aperture senza crescita** a DPR 1,25: native 73×72/72×73,
+contenuto/viewport 72×72, pulsanti 48×48 a (12,12), vincoli invariati.
+Il primo +1 nativo è registrato dentro il setPosition iniziale; hide/show/focus
+successivi non cambiano la geometria. La conversione interna OS non è provata.
 
-Il candidato conserva richiesta 72×72, core 120×120 e pulsanti 48×48; evita
-riposizionamenti superflui di una coppia già valida. La conferma della chiamata
-responsabile su Windows richiede ancora il probe prima/dopo nel nuovo E2E.
-[Report corrente](../apps/desktop/evidence/COMPANION_V2_REPORT.md#follow-up-windows-riuso-senza-drift).
-Nuovo E2E Windows **NON ESEGUITO nel cloud**, nessun PASS Windows anticipato.
+Il companion completo fallisce ancora, con budget test 90 secondi, dopo
+`BrowserWindow.close()` del Mini: main non ripristinato ed eccezione main-process
+`Object has been destroyed`. Il candidato corrente corregge lifecycle, invii IPC
+e recupero; dimensioni e geometria restano invariate.
+[Report corrente della chiusura](../apps/desktop/evidence/COMPANION_CLOSE_REPORT.md).
+**Nuovo E2E Windows NON ESEGUITO nel cloud**, nessun PASS Windows anticipato.
 
 ## Riduzione e continuità
 
@@ -33,6 +34,29 @@ il main. Doppi comandi non creano finestre. Il ripristino durante una creazione
 pendente la annulla; una successiva minimizzazione non resta bloccata quando la
 creazione annullata termina. In caso di errore il main torna visibile. Single
 instance, chiusura ordinaria, Alt+F4 sul cerchio e uscita controllata restano attivi.
+
+### Chiusura nativa e recupero
+
+Il Mini entra in chiusura già su `close`, senza attendere `closed`. La finestra
+viene staccata dal controller prima del recupero; il main originale torna visibile
+e con focus prima della distruzione dei figli. I webContents possono essere già
+morti mentre BrowserWindow.isDestroyed è ancora false: entrambi gli stati e la
+chiusura in corso sono verificati prima di inviare IPC o usare i satelliti.
+
+Una sola transizione ritira ogni core. Timer fade/blur e handshake vengono
+cancellati; i callback dei figli conoscono il proprio genitore e non notificano
+un core ritirato. La sola shell con contenuto morto viene finalizzata in una
+microtask per evitare un destroy rientrante nello stack nativo. Close/dispose
+rientranti non ripetono le notifiche e l'uscita vera mantiene disabled il recupero.
+
+Il ripristino del main è eseguito anche se una notifica overlay genera un errore:
+l'errore autentico viene poi ripropagato. Non viene ignorato genericamente.
+L'unica eccezione send filtrata è TypeError "Object has been destroyed" **quando
+il destinatario risulta effettivamente morto/in chiusura dopo la chiamata**.
+Nessun catch vuoto di errori applicativi nuovi; i contratti IPC esistenti restano.
+
+Il main non viene ricaricato o ricreato. Stessi webContents/sessione e bozza
+restano verificati; la chiusura del Mini non provoca login o invii automatici.
 
 ## Geometria e architettura orbitale
 
@@ -119,9 +143,9 @@ termine. Non espone nuove API ai renderer o modifica IPC/preload.
 
 I campioni `operations` permettono di confrontare la prima variazione di bounds,
 contenuto o vincoli: una modifica dopo setPosition e prima di showInactive è un
-riscontro diverso da una variazione al solo show o focus. La crescita osservata
-nei vecchi campioni non prova da sola la specifica chiamata: leggere la nuova
-traccia, senza assumere che focus o show siano innocui.
+riscontro diverso da una variazione al solo show o focus. La nuova traccia Windows c36b29 ha localizzato il primo +1 dentro setPosition
+iniziale; le riaperture non lo ripetono. Questo non certifica la conversione
+interna OS. I successivi problemi di chiusura hanno un probe lifecycle separato.
 
 ## Menu e tastiera
 
@@ -174,8 +198,8 @@ npm.cmd test
 npm.cmd run build
 npm.cmd run check:preload
 # Output nuovo: non cancella i risultati delle prove precedenti.
-$orbitOutput = "test-results/orbit-drift-" + [guid]::NewGuid().ToString("N")
-npm.cmd run test:desktop --workspace @neydra/desktop -- "--output=$orbitOutput"
+$closeOutput = "test-results/close-recovery-" + [guid]::NewGuid().ToString("N")
+npm.cmd run test:desktop --workspace @neydra/desktop -- "--output=$closeOutput" "--timeout=90000"
 # Solo dopo 2/2 PASS: npm.cmd start per la prova fisica.
 ```
 
@@ -230,6 +254,11 @@ Get-ChildItem .\apps\desktop\test-results -Recurse -File -Filter companion-v2-ge
 Un file `[]` significa che il processo non ha consentito alcuna misura, ad
 esempio per un errore di launch; non è un PASS geometrico. I fallimenti dopo
 l'apertura conservano i campioni delle fasi, le operazioni native e l'ultima raccolta disponibile.
+Il JSON include ora `lifecycle`: sequenza close/closed/contents-destroyed/show/
+hide/focus/blur/restore/minimize, ID e stato native/webContents di main/core.
+Sono campionati prima/dopo il vero core.close; un monitor delle eccezioni non
+cattura né sopprime gli errori reali. Se il processo smette di rispondere, la
+raccolta finale può non essere disponibile: restano i campioni già salvabili.
 Si raccolgono solo geometria e dati tecnici fissi: nessun testo chat, input,
 credenziale, token, URL, errore grezzo o screenshot del desktop.
 

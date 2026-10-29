@@ -5,8 +5,8 @@ import { installOrbitNativeProbe } from './helpers/orbit-native-probe';
 
 it('traces before/after native operations and events, delegates unchanged and restores original methods', async () => {
   class Window extends EventEmitter {
-    bounds = { x: 0, y: 0, width: 72, height: 72 }; visible = true; focused = false;
-    webContents = { id: 3, getURL: () => 'app://orbit/index.html' };
+    bounds = { x: 0, y: 0, width: 72, height: 72 }; visible = true; focused = false; contentsDead = false;
+    webContents = { id: 3, isDestroyed: () => this.contentsDead, getURL: () => { if (this.contentsDead) throw new TypeError('Object has been destroyed'); return 'app://orbit/index.html'; } };
     isDestroyed = () => false; isVisible = () => this.visible; isFocused = () => this.focused;
     getBounds = () => ({ ...this.bounds }); getContentBounds = this.getBounds;
     getMinimumSize = () => [72, 72]; getMaximumSize = this.getMinimumSize;
@@ -37,6 +37,9 @@ it('traces before/after native operations and events, delegates unchanged and re
     }
     expect(records).toContainEqual(expect.objectContaining({ phase: 'event', operation: 'resize' }));
     expect(JSON.stringify(records)).not.toMatch(/app:\/\/|title|token|prompt|headers/i);
+    expect(await probe.evaluate(probe => probe.drain())).toEqual([]);
+    window.contentsDead = true;
+    expect(() => window.hide()).not.toThrow(); // Observer must not query getURL on dead contents.
     expect(await probe.evaluate(probe => probe.drain())).toEqual([]);
   } finally { await probe.evaluate(probe => probe.dispose()); }
   expect(Object.getOwnPropertyDescriptors(Window.prototype)).toEqual(before);

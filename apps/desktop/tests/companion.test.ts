@@ -143,3 +143,25 @@ it('restores native fullscreen if the OS left it while hidden, without applying 
   f.main.isFullScreen.mockReturnValue(false); f.controller.restore();
   expect(f.main.setFullScreen).toHaveBeenCalledExactlyOnceWith(true); expect(f.main.setPosition).not.toHaveBeenCalled();
 });
+
+it('detaches a closing but still native-live companion before recovery and ignores reentrant restores', async () => {
+  const f = fixture(); await f.controller.reduce();
+  f.floating.hide.mockImplementation(() => { throw new Error('must not hide the closing shell'); });
+  f.main.show.mockClear(); f.main.focus.mockClear();
+  f.main.show.mockImplementationOnce(() => { f.controller.recover(); f.controller.restore(); });
+  f.main.isVisible.mockReturnValue(true);
+  expect(() => f.controller.recover(f.floating)).not.toThrow();
+  expect(f.main.focus).toHaveBeenCalledOnce(); expect(f.floating.hide).not.toHaveBeenCalled(); expect(f.quit).not.toHaveBeenCalled();
+  f.controller.recover(f.floating); expect(f.main.focus).toHaveBeenCalledOnce();
+});
+it('restores main despite an overlay callback failure, then reports the genuine error', async () => {
+  const f = fixture(), notification = vi.fn();
+  const controller = new CompanionController(f.main, f.create, () => [{ x: 0, y: 0, width: 1920, height: 1040 }],
+    () => ({ x: 0, y: 0 }), f.quit, notification);
+  await controller.reduce();
+  notification.mockImplementationOnce(() => { throw new Error('synthetic overlay failure'); });
+  expect(() => controller.recover(f.floating)).toThrow('synthetic overlay failure');
+  expect(f.main.isVisible()).toBe(true); expect(f.main.focus).toHaveBeenCalledOnce(); expect(f.quit).not.toHaveBeenCalled();
+  controller.dispose(); controller.dispose(); controller.recover(f.floating);
+  expect(f.main.focus).toHaveBeenCalledOnce();
+});

@@ -5,7 +5,7 @@ import { COMPANION_CHANNEL } from '../src/shared/companion-contracts';
 import { CHANNELS } from '../src/shared/contracts';
 import { WINDOW_CHANNELS } from '../src/shared/window-contracts';
 import { COMPANION_URL, ORBIT_URL } from '../src/main/companion-security';
-import { ORBIT_CHANNEL } from '../src/shared/orbit-contracts';
+import { ORBIT_CHANNEL, ORBIT_EVENT } from '../src/shared/orbit-contracts';
 import { APP_URL, CSP } from '../src/main/security';
 
 const state = vi.hoisted(() => ({
@@ -17,10 +17,10 @@ class MockWindow extends EventEmitter {
   static focused: MockWindow | null = null;
   static getFocusedWindow = () => MockWindow.focused;
   minimized = false;
-  visible = false; destroyed = false;
+  visible = false; destroyed = false; contentsDestroyed = false; closing = false;
   webContents = Object.assign(new EventEmitter(), {
     id: MockWindow.windows.length + 1, mainFrame: { url: '' },
-    setWindowOpenHandler: vi.fn(), send: vi.fn(), isDestroyed: () => this.destroyed,
+    setWindowOpenHandler: vi.fn(), send: vi.fn((...args: unknown[]) => { void args; if (this.contentsDestroyed) throw new TypeError('Object has been destroyed'); }), isDestroyed: () => this.contentsDestroyed,
   });
   position = { x: 100, y: 100 };
   constructor(readonly options: BrowserWindowConstructorOptions) { super(); MockWindow.windows.push(this); }
@@ -37,9 +37,23 @@ class MockWindow extends EventEmitter {
   setPosition = (x: number, y: number) => { this.position = { x, y }; };
   destroy = () => {
     if (this.destroyed) throw new Error('Window already destroyed');
-    this.destroyed = true; this.visible = false; this.emit('closed');
+    this.destroyContents();
+    for (const child of [...MockWindow.windows]) if ((child.options.parent as unknown) === this && !child.destroyed) child.destroy();
+    this.destroyed = true; this.visible = false;
+    if (MockWindow.focused === this) MockWindow.focused = null;
+    this.emit('closed');
     if (MockWindow.windows.every(window => window.destroyed)) app.emit('window-all-closed');
   };
+  destroyContents() {
+    if (this.contentsDestroyed) return;
+    this.contentsDestroyed = true; this.webContents.emit('destroyed');
+  }
+  close() {
+    if (this.destroyed || this.closing) return;
+    this.closing = true; this.emit('close');
+    // BrowserWindow.close does not synchronously mark the native window dead.
+    queueMicrotask(() => { if (!this.destroyed) this.destroy(); });
+  }
   async loadURL(url: string) {
     this.webContents.mainFrame.url = url;
     if (url === COMPANION_URL && state.handshake) await invoke(this, COMPANION_CHANNEL, { type: 'ready' });
@@ -234,4 +248,125 @@ it('does not hide an already hidden satellite when reusing the native orbital wi
     await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
     expect(open.hide).toHaveBeenCalledTimes(hides + 1);
   }
+});
+
+async function hiddenOrbit() {
+  const main = MockWindow.windows[0]!;
+  await invoke(main, COMPANION_CHANNEL, { type: 'reduce' });
+  const core = MockWindow.windows[1]!;
+  await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
+  const open = MockWindow.windows[2]!, exit = MockWindow.windows[3]!;
+  await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
+  expect(open.visible || exit.visible).toBe(false);
+  return { main, core, open, exit };
+}
+it('native close with hidden satellites restores the original focused main before asynchronous native destruction', async () => {
+  const { main, core, open, exit } = await hiddenOrbit();
+  const contents = main.webContents, session = main.options.webPreferences?.session;
+  const reload = vi.spyOn(main, 'loadURL');
+  main.show.mockClear(); main.focus.mockClear();
+  core.close();
+  expect(core.isDestroyed()).toBe(false); // The close event is earlier than closed.
+  expect(main.visible).toBe(true); expect(MockWindow.focused).toBe(main);
+  await vi.waitFor(() => expect(core.destroyed && open.destroyed && exit.destroyed).toBe(true));
+  expect(main.webContents).toBe(contents); expect(main.options.webPreferences?.session).toBe(session);
+  expect(reload).not.toHaveBeenCalled(); expect(main.destroyed).toBe(false);
+  expect(main.show).toHaveBeenCalledOnce(); expect(main.focus).toHaveBeenCalledOnce(); expect(app.quit).not.toHaveBeenCalled();
+});
+it('guards a dead core webContents while its BrowserWindow is alive, then recovers on contents destruction', async () => {
+  const { main, core, open } = await hiddenOrbit();
+  const sends = core.webContents.send.mock.calls.length;
+  core.contentsDestroyed = true; // Model the gap before the destroyed event is dispatched.
+  expect(core.isDestroyed()).toBe(false); expect(core.webContents.isDestroyed()).toBe(true);
+  open.close(); await vi.waitFor(() => expect(open.destroyed).toBe(true));
+  expect(core.webContents.send).toHaveBeenCalledTimes(sends);
+  expect(main.visible).toBe(false); // An IPC guard alone is not a recovery event.
+  core.webContents.emit('destroyed');
+  expect(main.visible).toBe(true); expect(MockWindow.focused).toBe(main);
+  await vi.waitFor(() => expect(core.destroyed).toBe(true));
+  expect(app.quit).not.toHaveBeenCalled();
+});
+it('does not conceal dead satellite contents or let parent/child close callbacks reenter recovery', async () => {
+  const { main, core, open, exit } = await hiddenOrbit();
+  const sends = open.webContents.send.mock.calls.length;
+  open.contentsDestroyed = true;
+  open.once('closed', () => { core.close(); core.emit('closed'); });
+  exit.once('closed', () => core.close());
+  main.show.mockClear(); main.focus.mockClear();
+  core.close(); core.close();
+  await vi.waitFor(() => expect(core.destroyed && open.destroyed && exit.destroyed).toBe(true));
+  core.emit('closed');
+  expect(open.webContents.send).toHaveBeenCalledTimes(sends);
+  expect(main.visible).toBe(true); expect(MockWindow.focused).toBe(main);
+  expect(main.show).toHaveBeenCalledOnce(); expect(main.focus).toHaveBeenCalledOnce(); expect(app.quit).not.toHaveBeenCalled();
+});
+it('cancels fade and blur timers when the parent closes during animated conceal', async () => {
+  const { main, core, open, exit } = await hiddenOrbit();
+  await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
+  vi.useFakeTimers();
+  await invoke(exit, ORBIT_CHANNEL, { type: 'dismiss' });
+  expect(vi.getTimerCount()).toBeGreaterThan(0);
+  core.close(); await vi.runAllTimersAsync();
+  const sends = [open.webContents.send.mock.calls.length, exit.webContents.send.mock.calls.length];
+  await vi.advanceTimersByTimeAsync(10000);
+  expect([open.webContents.send.mock.calls.length, exit.webContents.send.mock.calls.length]).toEqual(sends);
+  expect(vi.getTimerCount()).toBe(0); expect(core.destroyed && open.destroyed && exit.destroyed).toBe(true);
+  expect(main.visible).toBe(true); expect(MockWindow.focused).toBe(main); expect(app.quit).not.toHaveBeenCalled();
+  vi.useRealTimers();
+});
+it('handles core closure reentered from a satellite hide callback', async () => {
+  const { main, core, open } = await hiddenOrbit();
+  await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
+  open.once('hide', () => core.close());
+  await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
+  await vi.waitFor(() => expect(core.destroyed).toBe(true));
+  expect(main.visible).toBe(true); expect(MockWindow.focused).toBe(main); expect(app.quit).not.toHaveBeenCalled();
+});
+it('filters only an Object-has-been-destroyed send race and detaches a core that dies during notification', async () => {
+  const { main, core } = await hiddenOrbit();
+  core.webContents.send.mockImplementationOnce(() => { core.destroyContents(); throw new TypeError('Object has been destroyed'); });
+  expect(await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } })).toMatchObject({ code: 'unavailable' });
+  await vi.waitFor(() => expect(core.destroyed).toBe(true));
+  expect(main.visible).toBe(true); expect(MockWindow.focused).toBe(main); expect(app.quit).not.toHaveBeenCalled();
+});
+it('preserves genuine live notification errors after restoring main rather than swallowing them or quitting', async () => {
+  const { main, core } = await hiddenOrbit();
+  await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
+  core.webContents.send.mockImplementationOnce(() => { throw new Error('synthetic live notification bug'); });
+  expect(() => core.hide()).toThrow('synthetic live notification bug');
+  expect(main.visible).toBe(true); expect(MockWindow.focused).toBe(main); expect(app.quit).not.toHaveBeenCalled();
+});
+it('voluntary orbital Exit destroys the group and clears pending timers without showing or focusing main', async () => {
+  const { main, core, exit } = await hiddenOrbit();
+  await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } });
+  vi.useFakeTimers(); core.emit('blur');
+  main.show.mockClear(); main.focus.mockClear();
+  app.quit.mockImplementationOnce(() => app.emit('before-quit'));
+  await invoke(exit, ORBIT_CHANNEL, { type: 'activate' });
+  await vi.runAllTimersAsync(); app.emit('before-quit');
+  expect(main.show).not.toHaveBeenCalled(); expect(main.focus).not.toHaveBeenCalled();
+  expect(MockWindow.windows.every(window => window.destroyed)).toBe(true); expect(state.handlers.size).toBe(0);
+  expect(vi.getTimerCount()).toBe(0); expect(app.quit).toHaveBeenCalledOnce(); vi.useRealTimers();
+});
+it('does not reveal or send IPC to a satellite whose contents die during showInactive', async () => {
+  const { main, core, open } = await hiddenOrbit();
+  const reveals = () => open.webContents.send.mock.calls.filter(call => call[0] === ORBIT_EVENT && call[1] === 'reveal').length;
+  const before = reveals();
+  open.showInactive.mockImplementationOnce(() => { open.visible = true; open.destroyContents(); });
+  expect(await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } })).toMatchObject({ code: 'unavailable' });
+  await vi.waitFor(() => expect(open.destroyed).toBe(true));
+  expect(reveals()).toBe(before); expect(main.visible).toBe(false); expect(core.visible).toBe(true);
+  core.close(); await vi.waitFor(() => expect(core.destroyed).toBe(true)); expect(main.visible).toBe(true);
+});
+it('aborts a pending core handshake when contents die and leaves no readiness timer or automatic retry', async () => {
+  state.handshake = false; vi.useFakeTimers();
+  const main = MockWindow.windows[0]!, pending = invoke(main, COMPANION_CHANNEL, { type: 'reduce' });
+  const core = MockWindow.windows[1]!;
+  core.destroyContents();
+  expect(await pending).toEqual({ ok: false, code: 'unavailable' });
+  await vi.runAllTimersAsync();
+  expect(vi.getTimerCount()).toBe(0); expect(core.destroyed).toBe(true); expect(main.visible).toBe(true);
+  expect(MockWindow.focused).toBe(main); expect(main.focus).toHaveBeenCalledOnce();
+  expect(MockWindow.windows).toHaveLength(2); expect(app.quit).not.toHaveBeenCalled();
+  vi.useRealTimers();
 });

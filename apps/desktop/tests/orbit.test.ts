@@ -194,3 +194,23 @@ it('revalidates a reused pair against changed work areas and never reuses a dest
   orbit.close(); areas = [{ ...core }];
   expect(await orbit.toggle(false)).toMatchObject({ code: 'unavailable' });
 });
+
+it('closes reentrantly without repeating false notifications and disposes the children only once', async () => {
+  const f = fixture(); await f.orbit.toggle(false);
+  f.changed.mockClear();
+  f.windows[0]!.conceal.mockImplementationOnce(() => f.orbit.close());
+  f.changed.mockImplementation(() => f.orbit.close());
+  f.orbit.close(); f.orbit.close();
+  expect(f.changed).toHaveBeenCalledExactlyOnceWith(false);
+  for (const window of f.windows) window.destroy.mockImplementation(() => { f.orbit.close(); f.orbit.dispose(); });
+  f.orbit.dispose(); f.orbit.dispose();
+  for (const window of f.windows) expect(window.destroy).toHaveBeenCalledOnce();
+  expect(f.changed).toHaveBeenCalledTimes(1);
+});
+it('never notifies a parent during disposal, even with an open menu and reentrant child callbacks', async () => {
+  const f = fixture(); await f.orbit.toggle(true);
+  f.changed.mockClear(); f.changed.mockImplementation(() => { throw new Error('must not notify the retiring parent'); });
+  for (const window of f.windows) window.destroy.mockImplementation(() => f.orbit.close());
+  expect(() => f.orbit.dispose()).not.toThrow();
+  expect(f.changed).not.toHaveBeenCalled(); expect(f.focus).not.toHaveBeenCalled();
+});
