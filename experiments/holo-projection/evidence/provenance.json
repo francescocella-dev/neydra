@@ -1,0 +1,37 @@
+{
+  "mpfb": "2.0.18",
+  "packs": [
+    {
+      "pack": "faceunits01",
+      "entries": 52,
+      "licenses": [
+        "CC0"
+      ],
+      "authors": [
+        "Mika Suominen"
+      ],
+      "metadataSha256": "fd647a088691ddd9193ce9600df3377bb9ccf69c2904f0a7773a3c246d234c18",
+      "version": "Installed metadata has no explicit semantic pack version; identified by SHA256"
+    },
+    {
+      "pack": "visemes02",
+      "entries": 15,
+      "licenses": [
+        "CC0"
+      ],
+      "authors": [
+        "Mika Suominen"
+      ],
+      "metadataSha256": "61fdc22636c83ddb051b14c71d3b5cf834e256e98ef8dd86efd9014325ad6909",
+      "version": "Installed metadata has no explicit semantic pack version; identified by SHA256"
+    }
+  ],
+  "baseMesh": {
+    "license": "CC0-1.0",
+    "source": "https://github.com/makehumancommunity/mpfb2/blob/master/LICENSE.md"
+  },
+  "functionalPacksSource": "https://static.makehumancommunity.org/assets/assetpacks.html",
+  "noExternalTexturesOrAnatomyAdded": true,
+  "binaryCommitAuthorized": false,
+  "note": "Metadata proves installed pack declarations; original downloadable ZIP hashes unavailable. No MPFB/Blender program code bundled."
+}

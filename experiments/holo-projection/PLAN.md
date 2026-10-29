@@ -1,0 +1,12 @@
+# Issue #13 — bounded implementation plan
+
+1. Read-only preflight of approved local AutoFace and FacialKeys inputs, Blender/MPFB versions, actual morph deltas and asset provenance.
+2. Derive a reproducible runtime copy and self-contained GLB without modifying inputs; retain topology until morph integrity is proven. Generated binaries remain local and ignored.
+3. Isolated Three.js viewer, explicit MPFB channel mapping, face-only rendering, deterministic reversible projection progress and reduced motion. Reuse the safety boundary of PR #7, never its fixture artwork.
+4. Validate geometry in Blender and Three.js, transitions, desktop/narrow renders, report actual limitations, open a separate draft PR against main.
+
+Baseline: main 92d4793; original checkout feat/desktop-mini-interface c965021 with untracked Mini/reference/asset work preserved. Specifications read from origin/feat/holo-design-system-v1 and origin/docs/holo-3d-prototype-plan; no branch merge. No desktop, auth, speech provider or Mini changes.
+
+Visual review pass (2026-10-29, comment 6483271288): preserve v1 captures locally; change only renderer material/reveal/beam/background, optional shader iris proposal and capped synthetic speech profile. Keep approved GLB/Blender hashes and all morph mappings. Repeat asset/unit/browser/build checks; capture identical-camera frames and v2 WebGL recording, with marker translucency and pixel continuity measurements. Update this draft without binary commits.
+
+V3 consolidated pass (comment 6483816797): preserve V2 shader/beam paths and recordings as a selectable fallback. Add ice-cyan spatial translucency, a soft ascending reconstruction field, fine contour breakup and head-attached deterministic aura/pixel/flow Points (maximum 576 points, three extra draw calls). No face geometry/export/rig changes. Freeze continuous VFX and hide moving particles for reduced motion. Verify cached pipeline, morphs, V2 fallback, seed/budget/cleanup/reversal, actual V3 rendering and paired frame samples at the same camera; keep all binaries local. Stop after this focused pass for owner visual review.

@@ -1,0 +1,411 @@
+{
+  "status": "PASS",
+  "blender": "4.5.14 LTS",
+  "sources": {
+    "NEYDRA_Holo_FacialKeys_v01.blend": "e8c0094592f9d437e3e29256ef65f4bcdea749b63b679ebedc1b00290ff568bc",
+    "NEYDRA_Holo_AutoFace_v01.blend": "57ae308b9c300034d0407e821589307cd04304ac03bc0b2a488969ab38a81612"
+  },
+  "approvedNeutralMaxError": 0.0,
+  "sourceVertices": 19158,
+  "runtimeVertices": 4254,
+  "runtimePolygons": 4228,
+  "cutoffMeters": 1.36,
+  "originalIndexSha256": "c269fac063a20bbb1c285f5bdba57608532e54f9d1929a501189c349fea9521f",
+  "centerBlenderMeters": [
+    0.0,
+    -0.05374414473772049,
+    1.4776201248168945
+  ],
+  "units": "meters; glTF +Y up, +Z forward; head centered at origin",
+  "preflight": {
+    "eyeBlinkLeft": {
+      "changed": 783,
+      "maxDelta": 0.015520581065857181
+    },
+    "eyeBlinkRight": {
+      "changed": 783,
+      "maxDelta": 0.015520581065857181
+    },
+    "jawOpen": {
+      "changed": 2543,
+      "maxDelta": 0.03873834579305616
+    },
+    "mouthClose": {
+      "changed": 1972,
+      "maxDelta": 0.035928440756775565
+    },
+    "mouthPucker": {
+      "changed": 1729,
+      "maxDelta": 0.008709186288448096
+    },
+    "mouthFunnel": {
+      "changed": 1736,
+      "maxDelta": 0.010933001234905345
+    },
+    "viseme_aa": {
+      "changed": 2435,
+      "maxDelta": 0.01815569324335015
+    }
+  },
+  "morphs": {
+    "viseme_aa": {
+      "changed": 2128,
+      "maxDelta": 0.01815569324335015,
+      "maxError": 0.0
+    },
+    "viseme_CH": {
+      "changed": 1449,
+      "maxDelta": 0.007484609135736532,
+      "maxError": 0.0
+    },
+    "viseme_DD": {
+      "changed": 1339,
+      "maxDelta": 0.005000979378089037,
+      "maxError": 0.0
+    },
+    "viseme_E": {
+      "changed": 2183,
+      "maxDelta": 0.005852332141730492,
+      "maxError": 0.0
+    },
+    "viseme_FF": {
+      "changed": 1521,
+      "maxDelta": 0.005383307303460651,
+      "maxError": 0.0
+    },
+    "viseme_I": {
+      "changed": 1581,
+      "maxDelta": 0.009044889205023714,
+      "maxError": 0.0
+    },
+    "viseme_kk": {
+      "changed": 1796,
+      "maxDelta": 0.007256034592991542,
+      "maxError": 0.0
+    },
+    "viseme_nn": {
+      "changed": 1889,
+      "maxDelta": 0.005800870880065037,
+      "maxError": 0.0
+    },
+    "viseme_O": {
+      "changed": 1950,
+      "maxDelta": 0.006998571427117905,
+      "maxError": 0.0
+    },
+    "viseme_PP": {
+      "changed": 1587,
+      "maxDelta": 0.00724019227894048,
+      "maxError": 0.0
+    },
+    "viseme_RR": {
+      "changed": 1486,
+      "maxDelta": 0.0058309237335580815,
+      "maxError": 0.0
+    },
+    "viseme_sil": {
+      "changed": 0,
+      "maxDelta": 0.0,
+      "maxError": 0.0
+    },
+    "viseme_SS": {
+      "changed": 1953,
+      "maxDelta": 0.004867250890303407,
+      "maxError": 0.0
+    },
+    "viseme_TH": {
+      "changed": 1334,
+      "maxDelta": 0.0028477790013779402,
+      "maxError": 0.0
+    },
+    "viseme_U": {
+      "changed": 1379,
+      "maxDelta": 0.004440721297165715,
+      "maxError": 0.0
+    },
+    "browDownLeft": {
+      "changed": 507,
+      "maxDelta": 0.006952015226565901,
+      "maxError": 0.0
+    },
+    "browDownRight": {
+      "changed": 507,
+      "maxDelta": 0.006952015226565901,
+      "maxError": 0.0
+    },
+    "browInnerUp": {
+      "changed": 615,
+      "maxDelta": 0.005200028472785043,
+      "maxError": 0.0
+    },
+    "browOuterUpLeft": {
+      "changed": 361,
+      "maxDelta": 0.006970690976184951,
+      "maxError": 0.0
+    },
+    "browOuterUpRight": {
+      "changed": 361,
+      "maxDelta": 0.006970690976184951,
+      "maxError": 0.0
+    },
+    "cheekPuff": {
+      "changed": 2025,
+      "maxDelta": 0.014165091816981197,
+      "maxError": 0.0
+    },
+    "cheekSquintLeft": {
+      "changed": 659,
+      "maxDelta": 0.008954374675713198,
+      "maxError": 0.0
+    },
+    "cheekSquintRight": {
+      "changed": 659,
+      "maxDelta": 0.008954374675713198,
+      "maxError": 0.0
+    },
+    "eyeBlinkLeft": {
+      "changed": 718,
+      "maxDelta": 0.012613429752137051,
+      "maxError": 0.0
+    },
+    "eyeBlinkRight": {
+      "changed": 718,
+      "maxDelta": 0.012613429752137051,
+      "maxError": 0.0
+    },
+    "eyeLookDownLeft": {
+      "changed": 360,
+      "maxDelta": 0.0037336478402108858,
+      "maxError": 0.0
+    },
+    "eyeLookDownRight": {
+      "changed": 360,
+      "maxDelta": 0.0037336478402108858,
+      "maxError": 0.0
+    },
+    "eyeLookInLeft": {
+      "changed": 336,
+      "maxDelta": 0.0010049878988679212,
+      "maxError": 0.0
+    },
+    "eyeLookInRight": {
+      "changed": 336,
+      "maxDelta": 0.0010049878988679212,
+      "maxError": 0.0
+    },
+    "eyeLookOutLeft": {
+      "changed": 336,
+      "maxDelta": 0.0010049878988679212,
+      "maxError": 0.0
+    },
+    "eyeLookOutRight": {
+      "changed": 336,
+      "maxDelta": 0.0010049878988679212,
+      "maxError": 0.0
+    },
+    "eyeLookUpLeft": {
+      "changed": 708,
+      "maxDelta": 0.002578813692373326,
+      "maxError": 0.0
+    },
+    "eyeLookUpRight": {
+      "changed": 707,
+      "maxDelta": 0.002578813692373326,
+      "maxError": 0.0
+    },
+    "eyeSquintLeft": {
+      "changed": 385,
+      "maxDelta": 0.003560865281587242,
+      "maxError": 0.0
+    },
+    "eyeSquintRight": {
+      "changed": 385,
+      "maxDelta": 0.003560865281587242,
+      "maxError": 0.0
+    },
+    "eyeWideLeft": {
+      "changed": 346,
+      "maxDelta": 0.0036180119429878896,
+      "maxError": 0.0
+    },
+    "eyeWideRight": {
+      "changed": 346,
+      "maxDelta": 0.0036180119429878896,
+      "maxError": 0.0
+    },
+    "jawForward": {
+      "changed": 1900,
+      "maxDelta": 0.008631334851575832,
+      "maxError": 0.0
+    },
+    "jawLeft": {
+      "changed": 1809,
+      "maxDelta": 0.008055434853032423,
+      "maxError": 0.0
+    },
+    "jawOpen": {
+      "changed": 2225,
+      "maxDelta": 0.03873834579305616,
+      "maxError": 0.0
+    },
+    "jawRight": {
+      "changed": 1809,
+      "maxDelta": 0.008055434853032423,
+      "maxError": 0.0
+    },
+    "mouthClose": {
+      "changed": 1972,
+      "maxDelta": 0.035928440756775565,
+      "maxError": 0.0
+    },
+    "mouthDimpleLeft": {
+      "changed": 983,
+      "maxDelta": 0.007902537791227444,
+      "maxError": 0.0
+    },
+    "mouthDimpleRight": {
+      "changed": 983,
+      "maxDelta": 0.007902537791227444,
+      "maxError": 0.0
+    },
+    "mouthFrownLeft": {
+      "changed": 841,
+      "maxDelta": 0.006694032535456007,
+      "maxError": 0.0
+    },
+    "mouthFrownRight": {
+      "changed": 841,
+      "maxDelta": 0.006694032535456007,
+      "maxError": 0.0
+    },
+    "mouthFunnel": {
+      "changed": 1717,
+      "maxDelta": 0.010933001234905345,
+      "maxError": 0.0
+    },
+    "mouthLeft": {
+      "changed": 1854,
+      "maxDelta": 0.01069112414411474,
+      "maxError": 0.0
+    },
+    "mouthLowerDownLeft": {
+      "changed": 350,
+      "maxDelta": 0.004912192960030513,
+      "maxError": 0.0
+    },
+    "mouthLowerDownRight": {
+      "changed": 350,
+      "maxDelta": 0.004912192960030513,
+      "maxError": 0.0
+    },
+    "mouthPressLeft": {
+      "changed": 1143,
+      "maxDelta": 0.00809009538096067,
+      "maxError": 0.0
+    },
+    "mouthPressRight": {
+      "changed": 1143,
+      "maxDelta": 0.00809009538096067,
+      "maxError": 0.0
+    },
+    "mouthPucker": {
+      "changed": 1729,
+      "maxDelta": 0.008709186288448096,
+      "maxError": 0.0
+    },
+    "mouthRight": {
+      "changed": 1854,
+      "maxDelta": 0.01069112414411474,
+      "maxError": 0.0
+    },
+    "mouthRollLower": {
+      "changed": 617,
+      "maxDelta": 0.007294489332134948,
+      "maxError": 0.0
+    },
+    "mouthRollUpper": {
+      "changed": 934,
+      "maxDelta": 0.01060185818805143,
+      "maxError": 0.0
+    },
+    "mouthShrugLower": {
+      "changed": 362,
+      "maxDelta": 0.006940438336684609,
+      "maxError": 0.0
+    },
+    "mouthShrugUpper": {
+      "changed": 837,
+      "maxDelta": 0.0053151182799962005,
+      "maxError": 0.0
+    },
+    "mouthSmileLeft": {
+      "changed": 1640,
+      "maxDelta": 0.01868205476504101,
+      "maxError": 0.0
+    },
+    "mouthSmileRight": {
+      "changed": 1641,
+      "maxDelta": 0.018060436845334985,
+      "maxError": 0.0
+    },
+    "mouthStretchLeft": {
+      "changed": 1254,
+      "maxDelta": 0.008642353038766298,
+      "maxError": 0.0
+    },
+    "mouthStretchRight": {
+      "changed": 1254,
+      "maxDelta": 0.008642353038766298,
+      "maxError": 0.0
+    },
+    "mouthUpperUpLeft": {
+      "changed": 868,
+      "maxDelta": 0.00596234413937113,
+      "maxError": 0.0
+    },
+    "mouthUpperUpRight": {
+      "changed": 868,
+      "maxDelta": 0.00596234413937113,
+      "maxError": 0.0
+    },
+    "noseSneerLeft": {
+      "changed": 1082,
+      "maxDelta": 0.004821782436549238,
+      "maxError": 0.0
+    },
+    "noseSneerRight": {
+      "changed": 1082,
+      "maxDelta": 0.004821782436549238,
+      "maxError": 0.0
+    },
+    "tongueOut": {
+      "changed": 0,
+      "maxDelta": 0.0,
+      "maxError": 0.0
+    }
+  },
+  "exportFlags": {
+    "export_format": "GLB",
+    "use_selection": true,
+    "export_yup": true,
+    "export_apply": false,
+    "export_morph": true,
+    "export_morph_normal": false,
+    "export_morph_tangent": false,
+    "export_animations": false,
+    "export_skins": false,
+    "export_texcoords": false,
+    "export_normals": true,
+    "export_materials": "EXPORT"
+  },
+  "glb": {
+    "file": "holo-head.glb",
+    "bytes": 1185220,
+    "sha256": "deb8e7c964797939be132cfff74facae1e963b45f1b6c08a17b5b92edf592005"
+  },
+  "limitations": [
+    "No separate eyeball, teeth or tongue objects in approved scene; no added anatomy.",
+    "Head-only topology subset; shader fades lower perimeter. Cosmetic review pending.",
+    "Morph position deltas preserved; morph normals intentionally omitted for size."
+  ]
+}
