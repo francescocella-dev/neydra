@@ -3,14 +3,17 @@
 PR #10 DRAFT, branch `feat/desktop-mini-interface`. Questa specifica sostituisce
 il trascinamento libero. Baseline Windows e492b39: 157/157 unit e 2/2 E2E PASS,
 ma prova fisica del drag non approvata per drift e menu non utilizzabile.
-Il nuovo candidato richiede una nuova verifica Windows e visiva.
+Il successivo d5df904 ha ottenuto 170/170 offline e immersivo PASS su Windows,
+ma i due E2E companion sono falliti sul selettore e la prova fisica Island ha
+incontrato webContents null. Il nuovo candidato corregge quei due bug e richiede
+una nuova verifica Windows e visiva. [Studio dei sorgenti Coucou](NEYDRA_ISLAND_COUCOU_STUDY.md).
 
 ## Due modalità
 
 | Modalità | Finestra richiesta | Controllo visibile | Ancoraggio |
 | --- | --- | --- | --- |
 | Cerchio Mini (default) | 120×120 DIP | cerchio N 112×112, inset 4 | workArea in basso/destra, margine 24 DIP |
-| NEYDRA Island | 240×64 DIP | capsula 232×56, inset 4, raggio 28 | centro orizzontale della workArea, 8 DIP dal bordo alto |
+| NEYDRA Island | 240×64 DIP | notch largo quanto il viewport effettivo, alto 60 CSS px, angoli inferiori 20 px | centro orizzontale della workArea, aderente al bordo alto |
 
 Margini ridotti solo se la workArea non contiene il margine intero. Una finestra
 che non può entrare interamente lascia NEYDRA aperta. Le dimensioni native
@@ -18,10 +21,13 @@ restituite dall'OS vengono misurate: non si assume che Island misuri esattamente
 64 DIP in altezza su ogni DPI Windows. Non viene eseguito un resize correttivo.
 Il cerchio resta richiesto e verificato a 120×120.
 
-La capsula dark/grafite usa bordi arancio, marchio NEYDRA e freccia di apertura;
-font locale Oxanium, microtransizione del bordo con reduced motion. Il riferimento
-CouCou riguarda soltanto il concetto di collocazione superiore: nessun codice,
-asset, suono o funzione agente copiati. Nessun nuovo avatar o asset 3D.
+Il notch dark/grafite parte da x/y 0 nel viewport, ha angoli superiori retti,
+marchio NEYDRA, dettaglio arancio inferiore e freccia di apertura. Font locale
+Oxanium; hover, focus, pressione e menu aperto sono percepibili con transizioni
+reversibili, disabilitate da reduced motion. Dimensioni e ancoraggio non animati.
+Lo studio reale Coucou ha guidato forma e separazione tra stati/geometria:
+nessun codice o asset Coucou è incorporato, nessuna wake strip, espansione,
+poll del cursore, suono o funzione agente. Nessun nuovo avatar o asset 3D.
 
 Il main sceglie il monitor con `screen.getDisplayMatching` sui propri bounds,
 o normal bounds se minimizzato. Posizione/dimensione del main servono soltanto
@@ -60,14 +66,20 @@ Main e conversazione rimangono vivi. Cambio modalità alla successiva riduzione
 ricrea solo il companion e i suoi satelliti, mai il main. L'attesa della preferenza
 fa parte della riduzione pendente: restore/quit ne annullano la creazione tardiva.
 Il recupero e le protezioni e492b39 per close, webContents distrutti, rientranza,
-timer e vera uscita restano attivi. Nessuna send a destinatari morenti.
+timer e vera uscita restano attivi. Nessuna send a destinatari morenti o null:
+webContents viene acquisito una sola volta e validato prima di ogni operazione.
+hide/blur durante una transizione con contenuti scollegati recuperano il main
+prima di differire la pulizia del guscio nativo alla microtask successiva.
 
 ## Preferenza locale
 
 Impostazioni → **Modalità di riduzione** offre due radio native, scelta corrente,
 stato salvataggio/fallback e indicazione «prossima riduzione». Il comando laterale
 «Riduci a Mini», `_` nativo e icona in fullscreen usano tutti la scelta salvata.
-La preferenza non modifica una finestra già ridotta.
+La preferenza non modifica una finestra già ridotta. Il radio selezionato cambia
+durante onChange, prima dell'attesa IPC/disco; lo stato «Scelta provvisoria»
+distingue l'attesa dalla conferma. Su errore si torna visivamente a Cerchio Mini,
+coerentemente col fallback main, senza invii ripetuti o aggiornamenti DOM forzati.
 
 Unico nuovo file di configurazione, gestito dal main nella userData Electron:
 `reduction-preference.json`:
@@ -141,4 +153,4 @@ Dopo 3/3 PASS: `npm.cmd start`, senza login o invio AI. Per **entrambe** le scel
    hover/focus/movimento ridotto, superficie trasparente e menu sotto la capsula.
 
 Nessuna nuova cattura GUI o prova Windows eseguita nel cloud. Il PASS di e492b39
-non certifica questi due nuovi layout. [Report effettivo](../apps/desktop/evidence/FIXED_REDUCTION_REPORT.md).
+non certifica questi due nuovi layout. [Report del candidato attuale](../apps/desktop/evidence/ISLAND_WINDOWS_CORRECTION_REPORT.md).

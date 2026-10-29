@@ -8,7 +8,7 @@ export function anchoredPosition(bounds: Rect, area: Rect, mode: ReductionMode):
   if (![...Object.values(bounds), ...Object.values(area)].every(Number.isFinite)
     || bounds.width <= 0 || bounds.height <= 0 || area.width < bounds.width || area.height < bounds.height) return;
   const marginX = Math.min(24, Math.floor((area.width - bounds.width) / 2));
-  const marginY = Math.min(mode === 'circle' ? 24 : 8, Math.floor((area.height - bounds.height) / 2));
+  const marginY = Math.min(24, Math.floor((area.height - bounds.height) / 2));
   return mode === 'circle' ? { x: Math.round(area.x + area.width - bounds.width - marginX), y: Math.round(area.y + area.height - bounds.height - marginY) }
-    : { x: Math.round(area.x + (area.width - bounds.width) / 2), y: Math.round(area.y + marginY) };
+    : { x: Math.round(area.x + (area.width - bounds.width) / 2), y: Math.round(area.y) };
 }

@@ -12,6 +12,7 @@ import { APP_URL, CSP } from '../src/main/security';
 const state = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, payload: unknown) => Promise<unknown>>(),
   handshake: true, preferenceMode: 'circle' as 'circle' | 'island',
+  detachedOnCreate: '',
 }));
 class MockWindow extends EventEmitter {
   static windows: MockWindow[] = [];
@@ -19,12 +20,17 @@ class MockWindow extends EventEmitter {
   static getFocusedWindow = () => MockWindow.focused;
   minimized = false;
   visible = false; destroyed = false; contentsDestroyed = false; closing = false;
-  webContents = Object.assign(new EventEmitter(), {
+  contentsMissing = false;
+  readonly contents = Object.assign(new EventEmitter(), {
     id: MockWindow.windows.length + 1, mainFrame: { url: '' },
     setWindowOpenHandler: vi.fn(), send: vi.fn((...args: unknown[]) => { void args; if (this.contentsDestroyed) throw new TypeError('Object has been destroyed'); }), isDestroyed: () => this.contentsDestroyed,
   });
+  // Electron's TS declaration is non-null, but Windows can detach the native
+  // contents before BrowserWindow.isDestroyed() changes. Preserve the old object
+  // as an already queued IPC/event source, independently of this getter.
+  get webContents() { return this.contentsMissing ? null! : this.contents; }
   position = { x: 100, y: 100 };
-  constructor(readonly options: BrowserWindowConstructorOptions) { super(); this.position = { x: options.x ?? 100, y: options.y ?? 100 }; MockWindow.windows.push(this); }
+  constructor(readonly options: BrowserWindowConstructorOptions) { super(); this.position = { x: options.x ?? 100, y: options.y ?? 100 }; this.contentsMissing = options.title === state.detachedOnCreate; MockWindow.windows.push(this); }
   removeMenu = vi.fn(); isDestroyed = () => this.destroyed; isVisible = () => this.visible;
   isMinimized = () => this.minimized; isMaximized = () => false; isFullScreen = () => false;
   restore = vi.fn(() => { this.minimized = false; this.emit('restore'); }); setFullScreen = vi.fn();
@@ -47,7 +53,7 @@ class MockWindow extends EventEmitter {
   };
   destroyContents() {
     if (this.contentsDestroyed) return;
-    this.contentsDestroyed = true; this.webContents.emit('destroyed');
+    this.contentsDestroyed = true; this.contents.emit('destroyed');
   }
   close() {
     if (this.destroyed || this.closing) return;
@@ -87,13 +93,13 @@ vi.mock('electron', () => ({
   ipcMain: { handle: (name: string, handler: (event: unknown, payload: unknown) => Promise<unknown>) => state.handlers.set(name, handler),
     removeHandler: (name: string) => state.handlers.delete(name) },
 }));
-function invoke(window: MockWindow, channel: string, payload: unknown, frame = window.webContents.mainFrame) {
-  return state.handlers.get(channel)!({ sender: window.webContents, senderFrame: frame }, payload);
+function invoke(window: MockWindow, channel: string, payload: unknown, frame = window.contents.mainFrame) {
+  return state.handlers.get(channel)!({ sender: window.contents, senderFrame: frame }, payload);
 }
 beforeEach(async () => {
   vi.useRealTimers(); vi.resetModules(); vi.clearAllMocks(); state.handlers.clear(); sessions.clear(); MockWindow.windows = [];
   app.removeAllListeners(); display.removeAllListeners(); state.handshake = true; app.requestSingleInstanceLock.mockReturnValue(true);
-  MockWindow.focused = null; state.preferenceMode = 'circle';
+  MockWindow.focused = null; state.preferenceMode = 'circle'; state.detachedOnCreate = '';
   await import('../src/main/index');
   await vi.waitFor(() => expect(MockWindow.windows).toHaveLength(1));
 });
@@ -415,4 +421,87 @@ it('uses matched display workArea and normal main bounds when minimized, not its
   expect(display.getDisplayMatching).toHaveBeenCalledWith(main.getNormalBounds());
   expect(core.getBounds()).toEqual(before); expect(moves).not.toHaveBeenCalled();
   display.getDisplayMatching.mockReturnValue({ id: 1, scaleFactor: 1, workArea: { x: 0, y: 0, width: 1920, height: 1040 } });
+});
+
+it.each(['circle', 'island'] as const)('recovers %s native close with null webContents and hidden children, preserving main identity', async mode => {
+  const { main, core, open, exit } = await hiddenOrbit(mode);
+  const mainContents = main.contents, session = main.options.webPreferences?.session;
+  const sends = [core.contents.send.mock.calls.length, open.contents.send.mock.calls.length, exit.contents.send.mock.calls.length];
+  core.contentsMissing = true; open.contentsMissing = true; exit.contentsMissing = true;
+  expect(core.webContents).toBeNull(); expect(core.isDestroyed()).toBe(false);
+  expect(() => { core.close(); core.emit('blur'); core.emit('hide'); core.close(); }).not.toThrow();
+  expect(main.visible).toBe(true); expect(MockWindow.focused).toBe(main);
+  await vi.waitFor(() => expect(core.destroyed && open.destroyed && exit.destroyed).toBe(true));
+  expect([core.contents.send.mock.calls.length, open.contents.send.mock.calls.length, exit.contents.send.mock.calls.length]).toEqual(sends);
+  expect(main.contents).toBe(mainContents); expect(main.options.webPreferences?.session).toBe(session);
+  expect(app.quit).not.toHaveBeenCalled();
+});
+it.each(['hide', 'blur'] as const)('recovers detached core contents during %s before the native destroyed flag/event, without notifying it', async event => {
+  const { main, core, open, exit } = await hiddenOrbit();
+  const sends = core.contents.send.mock.calls.length;
+  core.contentsMissing = true;
+  expect(() => core.emit(event)).not.toThrow();
+  expect(main.visible).toBe(true); expect(MockWindow.focused).toBe(main);
+  await vi.waitFor(() => expect(core.destroyed && open.destroyed && exit.destroyed).toBe(true));
+  expect(core.contents.send).toHaveBeenCalledTimes(sends); expect(app.quit).not.toHaveBeenCalled();
+});
+it('rejects queued IPC from null contents and safely creates Island after detached core recovery', async () => {
+  const { main, core, open } = await hiddenOrbit();
+  core.contentsMissing = true; open.contentsMissing = true;
+  expect(await invoke(core, COMPANION_CHANNEL, { type: 'restore' })).toMatchObject({ code: 'untrusted-sender' });
+  expect(await invoke(open, ORBIT_CHANNEL, { type: 'activate' })).toMatchObject({ code: 'untrusted-sender' });
+  expect(await invoke(main, REDUCTION_CHANNEL, { type: 'set', mode: 'island' })).toMatchObject({ ok: true });
+  core.close(); await vi.waitFor(() => expect(core.destroyed).toBe(true));
+  expect(await invoke(main, COMPANION_CHANNEL, { type: 'reduce' })).toEqual({ ok: true });
+  const island = MockWindow.windows.at(-1)!;
+  expect(island.options.title).toBe('NEYDRA Island'); expect(island.visible).toBe(true);
+  expect(main.visible).toBe(false); expect(app.quit).not.toHaveBeenCalled();
+});
+it('does not destroy reentrantly or recover main when a mode switch detaches old contents before native blur', async () => {
+  const { main, core, open, exit } = await hiddenOrbit();
+  await invoke(core, COMPANION_CHANNEL, { type: 'restore' });
+  await invoke(main, REDUCTION_CHANNEL, { type: 'set', mode: 'island' });
+  const nativeDestroy = core.destroy;
+  core.destroy = vi.fn(() => { core.contentsMissing = true; core.emit('blur'); nativeDestroy(); });
+  main.show.mockClear(); main.focus.mockClear();
+  expect(await invoke(main, COMPANION_CHANNEL, { type: 'reduce' })).toEqual({ ok: true });
+  await Promise.resolve();
+  expect(core.destroy).toHaveBeenCalledOnce(); expect(core.destroyed && open.destroyed && exit.destroyed).toBe(true);
+  const island = MockWindow.windows.at(-1)!;
+  expect(island.options.title).toBe('NEYDRA Island'); expect(island.visible).toBe(true); expect(MockWindow.focused).toBe(island);
+  expect(main.show).not.toHaveBeenCalled(); expect(main.focus).not.toHaveBeenCalled(); expect(main.visible).toBe(false);
+  expect(app.quit).not.toHaveBeenCalled();
+});
+it('treats missing main contents as unavailable on both companion and preference channels', async () => {
+  const { main, core } = await hiddenOrbit(); main.contentsMissing = true;
+  expect(await invoke(main, REDUCTION_CHANNEL, { type: 'get' })).toMatchObject({ code: 'unavailable' });
+  expect(await invoke(main, COMPANION_CHANNEL, { type: 'reduce' })).toMatchObject({ code: 'unavailable' });
+  expect(await invoke(core, COMPANION_CHANNEL, { type: 'mode' })).toMatchObject({ code: 'unavailable' });
+  expect(state.preferenceMode).toBe('circle'); expect(app.quit).not.toHaveBeenCalled();
+  main.contentsMissing = false;
+});
+it.each(['NEYDRA Island', 'Apri NEYDRA'])('cleans up a %s created without contents without hiding an unrecoverable main or leaving readiness timers', async title => {
+  vi.useFakeTimers(); state.preferenceMode = 'island'; state.detachedOnCreate = title;
+  const main = MockWindow.windows[0]!;
+  const result = await invoke(main, COMPANION_CHANNEL, { type: 'reduce' });
+  if (title === 'NEYDRA Island') {
+    expect(result).toMatchObject({ code: 'unavailable' }); expect(main.visible).toBe(true); expect(main.hide).not.toHaveBeenCalled();
+  } else {
+    const core = MockWindow.windows[1]!;
+    expect(await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } })).toMatchObject({ code: 'unavailable' });
+    core.close(); expect(main.visible).toBe(true);
+  }
+  await vi.runAllTimersAsync();
+  expect(MockWindow.windows.filter(window => window.options.title === title).every(window => window.destroyed)).toBe(true);
+  expect(vi.getTimerCount()).toBe(0); expect(app.quit).not.toHaveBeenCalled(); vi.useRealTimers();
+});
+it('handles a null contents send race and quits detached windows without restoring main', async () => {
+  const { main, core, open, exit } = await hiddenOrbit();
+  core.contents.send.mockImplementationOnce(() => { core.contentsMissing = true; throw new TypeError('Object has been destroyed'); });
+  expect(await invoke(core, COMPANION_CHANNEL, { type: 'menu', input: { keyboard: false } })).toMatchObject({ ok: true });
+  open.contentsMissing = true; exit.contentsMissing = true;
+  main.show.mockClear(); main.focus.mockClear();
+  expect(() => app.emit('before-quit')).not.toThrow();
+  await vi.waitFor(() => expect(MockWindow.windows.every(window => window.destroyed)).toBe(true));
+  expect(main.show).not.toHaveBeenCalled(); expect(main.focus).not.toHaveBeenCalled(); expect(state.handlers.size).toBe(0);
 });

@@ -7,6 +7,8 @@ import type { WindowState } from '../src/shared/window-contracts';
 import { offlineProvider } from '../src/main/offline';
 import { DesktopService, desktopStatus } from '../src/main/service';
 import { App } from '../src/renderer/App';
+import { ReductionSettings } from '../src/renderer/ReductionSettings';
+import type { ReductionResult } from '../src/shared/reduction-contracts';
 
 beforeAll(() => {
   // jsdom does not implement native dialog/fullscreen. Only renderer state is tested here.
@@ -265,4 +267,30 @@ it('offers accessible persisted reduction choices, updates the disclosure and re
   await waitFor(() => expect(menu.getByRole('status').textContent).toContain('Salvataggio non riuscito'));
   expect((circle as HTMLInputElement).checked).toBe(true);
   expect(bridge.startChatGPT).not.toHaveBeenCalled(); expect(bridge.connectChatGPT).not.toHaveBeenCalled();
+});
+
+it.each(['saved', 'fallback', 'rejected'] as const)('acknowledges a radio click before slow IPC/disk finishes (%s), then confirms or rolls back', async outcome => {
+  const { bridge } = fixture();
+  let finish!: (result: ReductionResult) => void, fail!: (error: Error) => void;
+  vi.mocked(bridge.setReductionMode).mockImplementationOnce(() => new Promise((resolve, reject) => { finish = resolve; fail = reject; }));
+  render(<ReductionSettings />);
+  const circle = screen.getByRole('radio', { name: 'Cerchio Mini — in basso a destra' }) as HTMLInputElement;
+  const island = screen.getByRole('radio', { name: 'NEYDRA Island — in alto al centro' }) as HTMLInputElement;
+  await waitFor(() => expect(circle.matches(':disabled')).toBe(false));
+  // fireEvent returns after React's synchronous event commit. No waitFor, DOM
+  // mutation or forced locator can conceal a controlled radio reverting here.
+  fireEvent.click(island);
+  expect(island.checked).toBe(true); expect(circle.checked).toBe(false);
+  expect(screen.getByRole('status').textContent).toContain('Scelta provvisoria');
+  expect(island.matches(':disabled') && circle.matches(':disabled')).toBe(true);
+  circle.click(); expect(bridge.setReductionMode).toHaveBeenCalledOnce();
+  expect(island.checked).toBe(true);
+  await act(async () => {
+    if (outcome === 'rejected') fail(new Error('synthetic IPC failure'));
+    else finish({ ok: true, preference: { mode: outcome === 'saved' ? 'island' : 'circle', status: outcome === 'saved' ? 'saved' : 'save-failed' } });
+  });
+  expect(island.checked).toBe(outcome === 'saved'); expect(circle.checked).toBe(outcome !== 'saved');
+  expect(island.matches(':disabled') || circle.matches(':disabled')).toBe(false);
+  expect(screen.getByRole('status').textContent).toContain(outcome === 'saved' ? 'Preferenza salvata' : 'Salvataggio non riuscito');
+  expect(bridge.setReductionMode).toHaveBeenCalledOnce(); expect(bridge.connectChatGPT).not.toHaveBeenCalled(); expect(bridge.startChatGPT).not.toHaveBeenCalled();
 });

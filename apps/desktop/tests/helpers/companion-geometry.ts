@@ -4,16 +4,21 @@ import { SATELLITE_SIZE } from '../../src/main/orbit-controller';
 // Test-only: no messages, input, account data, URLs or raw errors are returned.
 export async function companionGeometry(desktop: ElectronApplication) {
   const native = await desktop.evaluate(({ BrowserWindow, screen }, SATELLITE_SIZE) => {
-    const core = BrowserWindow.getAllWindows().find(window => window.webContents.getURL() === 'app://companion/index.html');
+    const windows = BrowserWindow.getAllWindows().flatMap(window => {
+      if (window.isDestroyed()) return [];
+      const contents = window.webContents;
+      return contents && !contents.isDestroyed() ? [{ window, contents }] : [];
+    });
+    const core = windows.find(({ contents }) => contents.getURL() === 'app://companion/index.html')?.window;
     const bounds = core?.getBounds();
     return { bounds, content: core?.getContentBounds(), scale: bounds ? screen.getDisplayMatching(bounds).scaleFactor : undefined,
       runtime: { electron: process.versions.electron, chrome: process.versions.chrome, platform: process.platform },
       requestedSatellite: { width: SATELLITE_SIZE, height: SATELLITE_SIZE },
       displays: screen.getAllDisplays().map(display => ({ workArea: display.workArea, scale: display.scaleFactor })),
       areas: screen.getAllDisplays().map(display => display.workArea),
-      satellites: BrowserWindow.getAllWindows().filter(window => window.webContents.getURL() === 'app://orbit/index.html')
-        .map(window => ({ id: window.webContents.id, bounds: window.getBounds(), content: window.getContentBounds(),
-          minimum: window.getMinimumSize(), maximum: window.getMaximumSize(), resizable: window.isResizable(), zoom: window.webContents.getZoomFactor(),
+      satellites: windows.filter(({ contents }) => contents.getURL() === 'app://orbit/index.html')
+        .map(({ window, contents }) => ({ id: contents.id, bounds: window.getBounds(), content: window.getContentBounds(),
+          minimum: window.getMinimumSize(), maximum: window.getMaximumSize(), resizable: window.isResizable(), zoom: contents.getZoomFactor(),
           physicalBounds: process.platform === 'win32' ? screen.dipToScreenRect(window, window.getBounds()) : undefined,
           scale: screen.getDisplayMatching(window.getBounds()).scaleFactor, visible: window.isVisible() })) };
   }, SATELLITE_SIZE);
@@ -26,7 +31,9 @@ export async function companionGeometry(desktop: ElectronApplication) {
   const satellites = await Promise.all(desktop.windows().filter(page => page.url() === 'app://orbit/index.html').map(async page => {
     try {
       const window = await desktop.browserWindow(page);
-      const id: number = await window.evaluate(window => window.webContents.id);
+      const id: number | undefined = await window.evaluate(window => {
+        const contents = !window.isDestroyed() && window.webContents; return contents && !contents.isDestroyed() ? contents.id : undefined;
+      });
       const renderer = await page.evaluate(() => {
         const button = document.getElementById('action') as HTMLButtonElement | null;
         if (!button) return { present: false as const };

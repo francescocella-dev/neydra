@@ -30,6 +30,7 @@ test(`companion ${mode}: fixed anchor, ten openings, native recovery and persist
     await expect(circleChoice).toBeEnabled();
     if (mode === 'circle') { await islandChoice.check(); await expect(main.locator('#reduction-notice')).toContainText('Preferenza salvata'); }
     await (mode === 'circle' ? circleChoice : islandChoice).check();
+    await expect(mode === 'circle' ? circleChoice : islandChoice).toBeChecked();
     await expect(main.locator('#reduction-notice')).toContainText('Preferenza salvata');
     await expect(mode === 'circle' ? circleChoice : islandChoice).toBeChecked();
     await main.getByRole('button', { name: 'Chiudi menu' }).click();
@@ -41,8 +42,11 @@ test(`companion ${mode}: fixed anchor, ten openings, native recovery and persist
     const mainId = await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.id);
     const state = () => desktop.evaluate(({ BrowserWindow }, id) => {
       const main = BrowserWindow.fromId(id)!;
-      const core = BrowserWindow.getAllWindows().find(window => window.webContents.getURL() === 'app://companion/index.html');
-      const satellites = BrowserWindow.getAllWindows().filter(window => window.webContents.getURL() === 'app://orbit/index.html');
+      const url = (window: InstanceType<typeof BrowserWindow>) => {
+        const contents = !window.isDestroyed() && window.webContents; return contents && !contents.isDestroyed() ? contents.getURL() : undefined;
+      };
+      const core = BrowserWindow.getAllWindows().find(window => url(window) === 'app://companion/index.html');
+      const satellites = BrowserWindow.getAllWindows().filter(window => url(window) === 'app://orbit/index.html');
       return { count: BrowserWindow.getAllWindows().length, mainVisible: main.isVisible(), mainFocused: main.isFocused(), minimized: main.isMinimized(),
         coreVisible: core?.isVisible() ?? false, coreId: core?.id, orbitVisible: satellites.filter(window => window.isVisible()).length };
     }, mainId);
@@ -74,16 +78,21 @@ test(`companion ${mode}: fixed anchor, ten openings, native recovery and persist
       if (mode === 'circle') {
         expect(native.bounds).toMatchObject({ width: 120, height: 120 }); expect(native.content).toMatchObject({ width: 120, height: 120 });
       }
-      expect(renderer).toMatchObject({ width: mode === 'circle' ? 112 : 232, height: mode === 'circle' ? 112 : 56,
-        x: 4, y: 4, radius: mode === 'circle' ? '50%' : '28px', transform: 'none', appearance: 'none' });
+      expect(renderer).toMatchObject({ width: mode === 'circle' ? 112 : renderer!.viewport.width, height: mode === 'circle' ? 112 : 60,
+        x: mode === 'circle' ? 4 : 0, y: mode === 'circle' ? 4 : 0,
+        radius: mode === 'circle' ? '50%' : '0px 0px 20px 20px', transform: 'none', appearance: 'none' });
       const area = await desktop.evaluate(({ BrowserWindow, screen }, id) => {
         const main = BrowserWindow.fromId(id)!; return screen.getDisplayMatching(main.isMinimized() ? main.getNormalBounds() : main.getBounds()).workArea;
       }, mainId);
       const box = native.bounds!;
       expect(box.x).toBe(mode === 'circle' ? Math.round(area.x + area.width - box.width - Math.min(24, Math.floor((area.width - box.width) / 2))) : Math.round(area.x + (area.width - box.width) / 2));
-      expect(box.y).toBe(mode === 'circle' ? Math.round(area.y + area.height - box.height - Math.min(24, Math.floor((area.height - box.height) / 2))) : Math.round(area.y + Math.min(8, Math.floor((area.height - box.height) / 2))));
+      expect(box.y).toBe(mode === 'circle' ? Math.round(area.y + area.height - box.height - Math.min(24, Math.floor((area.height - box.height) / 2))) : Math.round(area.y));
       expect(native.areas.some(area => box.x >= area.x && box.y >= area.y && box.x + box.width <= area.x + area.width && box.y + box.height <= area.y + area.height)).toBe(true);
       expect(satelliteGeometryProblems(snapshot)).toEqual([]);
+      if (mode === 'island') {
+        expect(native.content!.y + renderer!.y).toBe(area.y); // Visible shape touches the workArea's upper edge.
+        for (const satellite of native.satellites.filter(window => window.visible)) expect(satellite.bounds.y).toBeGreaterThanOrEqual(box.y + box.height + 4);
+      }
       return satelliteShape(snapshot);
     };
     await expect(core.getByRole('button', { name: 'Apri NEYDRA', exact: true })).toBeVisible();
@@ -107,6 +116,13 @@ test(`companion ${mode}: fixed anchor, ten openings, native recovery and persist
       await reduced(); await stable('fixed-after-mouse-gesture');
     };
     await stable('idle'); await core.getByRole('button').hover(); await stable('hover');
+    await core.emulateMedia({ reducedMotion: 'reduce' });
+    if (mode === 'island') {
+      expect(await core.getByRole('button').evaluate(button => ({ transition: getComputedStyle(button).transitionDuration,
+        accent: getComputedStyle(button, '::after').transitionDuration }))).toEqual({ transition: '0s', accent: '0s' });
+      await stable('reduced-motion');
+    }
+    await core.emulateMedia({ reducedMotion: 'no-preference' });
     await fixedGesture();
       await core.getByRole('button').click(); await restored();
       await main.getByRole('button', { name: 'Schermo intero', exact: true }).click();

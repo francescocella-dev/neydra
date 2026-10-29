@@ -12,9 +12,11 @@ export async function installCompanionLifecycleProbe(desktop: ElectronApplicatio
     let sequence = 0, uncaught = 0;
     const state = (window: Window, contents: typeof mainContents) => {
       const destroyed = window.isDestroyed();
-      const contentsDestroyed = contents.isDestroyed();
-      return { destroyed, contentsDestroyed, visible: !destroyed && !contentsDestroyed ? window.isVisible() : undefined,
-        focused: !destroyed && !contentsDestroyed ? window.isFocused() : undefined };
+      const contentsDestroyed = !contents || contents.isDestroyed();
+      const contentsDetached = !destroyed && !window.webContents;
+      return { destroyed, contentsDestroyed, contentsDetached,
+        visible: !destroyed && !contentsDestroyed && !contentsDetached ? window.isVisible() : undefined,
+        focused: !destroyed && !contentsDestroyed && !contentsDetached ? window.isFocused() : undefined };
     };
     const record = (event: string, id: number) => {
       if (records.length < 2048) records.push({ sequence: ++sequence, event, id,
@@ -27,7 +29,7 @@ export async function installCompanionLifecycleProbe(desktop: ElectronApplicatio
         if (event === 'close' || event === 'closed') events.prependListener(event, listener); else events.on(event, listener); disposers.push(() => events.removeListener(event, listener));
       }
       const destroyed = () => record('contents-destroyed', id);
-      contents.prependListener('destroyed', destroyed); disposers.push(() => contents.removeListener('destroyed', destroyed));
+      if (contents) { contents.prependListener('destroyed', destroyed); disposers.push(() => contents.removeListener('destroyed', destroyed)); }
     };
     track(main); track(core);
     const created = (_event: unknown, window: Window) => { if (window.getParentWindow() === core) track(window); };

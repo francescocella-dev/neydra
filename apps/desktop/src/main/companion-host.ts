@@ -1,7 +1,7 @@
 import { REDUCTION_CHANNEL, reductionCommandSchema, type ReductionMode } from '../shared/reduction-contracts';
 import { reductionPreference } from './reduction-preference';
 import { anchoredPosition, companionSize } from './companion-placement';
-import { app, BrowserWindow, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, type WebContents } from 'electron';
 import { join } from 'node:path';
 import { COMPANION_CHANNEL, COMPANION_MENU_EVENT, companionCommandSchema } from '../shared/companion-contracts';
 import { ORBIT_CHANNEL, ORBIT_EVENT, type OrbitRole } from '../shared/orbit-contracts';
@@ -24,11 +24,18 @@ export function createCompanionHost(main: BrowserWindow) {
   const matchedDisplay = () => screen.getDisplayMatching(main.isMinimized() ? main.getNormalBounds() : main.getBounds());
   const areas = () => screen.getAllDisplays().map(display => display.workArea);
   const closing = new WeakSet<BrowserWindow>(), destroying = new WeakSet<BrowserWindow>();
-  const alive = (window: BrowserWindow) => !disposed && !closing.has(window) && !window.isDestroyed() && !window.webContents.isDestroyed();
+  // Electron's native teardown can detach webContents before the BrowserWindow
+  // reports destroyed. Capture it once; an alive BrowserWindow is not sufficient.
+  const liveContents = (window: BrowserWindow): WebContents | undefined => {
+    if (disposed || closing.has(window) || window.isDestroyed()) return;
+    const contents = window.webContents;
+    return contents && !contents.isDestroyed() ? contents : undefined;
+  };
+  const alive = (window: BrowserWindow) => !!liveContents(window);
   const usableCore = () => core && alive(core) && core.isVisible() ? core : undefined;
   const send = (window: BrowserWindow, channel: string, payload: unknown): boolean => {
-    if (!alive(window)) return false;
-    const contents = window.webContents;
+    const contents = liveContents(window);
+    if (!contents) return false;
     try { contents.send(channel, payload); return true; }
     catch (error) {
       // Only the known native destruction race is expected. Live-window bugs
@@ -50,24 +57,24 @@ export function createCompanionHost(main: BrowserWindow) {
     blurTimer = setTimeout(() => {
       if (disposed) return;
       const focused = BrowserWindow.getFocusedWindow();
-      if (focused !== usableCore() && ![...satellites.values()].some(entry => entry.window === focused && !entry.window.isDestroyed() && entry.window.isVisible())) orbit.close(false, true);
+      if (focused !== usableCore() && ![...satellites.values()].some(entry => entry.window === focused && alive(entry.window) && entry.window.isVisible())) orbit.close(false, true);
     }, 0);
   };
-  const secure = (window: BrowserWindow) => {
+  const secure = (window: BrowserWindow, contents: WebContents) => {
     window.removeMenu();
-    window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    window.webContents.on('will-navigate', event => event.preventDefault());
-    window.webContents.on('will-frame-navigate', event => event.preventDefault());
-    window.webContents.on('will-attach-webview', event => event.preventDefault());
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    contents.on('will-navigate', event => event.preventDefault());
+    contents.on('will-frame-navigate', event => event.preventDefault());
+    contents.on('will-attach-webview', event => event.preventDefault());
     window.on('close', () => closing.add(window));
     window.on('blur', () => { if (alive(window)) groupBlurred(); });
   };
-  const loaded = async (window: BrowserWindow, url: string, register: (ready?: () => void) => void) => {
+  const loaded = async (window: BrowserWindow, contents: WebContents, url: string, register: (ready?: () => void) => void) => {
+    if (!alive(window) || contents.isDestroyed()) throw new Error('UI closed');
     let timer: ReturnType<typeof setTimeout> | undefined;
     let rejectReady: (reason: Error) => void = () => {};
     const aborted = () => rejectReady(new Error('UI closed'));
     const ready = new Promise<void>((resolve, reject) => { rejectReady = reject; register(resolve); timer = setTimeout(() => reject(new Error('UI not ready')), 5000); });
-    const contents = window.webContents;
     window.once('closed', aborted); contents.once('destroyed', aborted);
     try { await Promise.all([window.loadURL(url), ready]); }
     finally { clearTimeout(timer); window.removeListener('closed', aborted); contents.removeListener('destroyed', aborted); register(); }
@@ -86,7 +93,7 @@ export function createCompanionHost(main: BrowserWindow) {
       title: mode === 'circle' ? 'NEYDRA Mini' : 'NEYDRA Island',
       webPreferences: { ...rendererPreferences, session: companionSession, preload: join(__dirname, '../preload/companion.cjs') } });
     coreMode = mode;
-    core = floating; secure(floating);
+    core = floating;
     let retired = false;
     const recover = () => {
       if (retired) return;
@@ -104,9 +111,26 @@ export function createCompanionHost(main: BrowserWindow) {
       }
     };
     const failed = () => { try { recover(); } finally { destroy(floating); } };
+    const detached = () => {
+      // hide/blur can be dispatched inside a native close/destroy operation.
+      // Restore now, but finish a dead native shell after that stack unwinds.
+      try { recover(); } finally { queueMicrotask(() => destroy(floating)); }
+    };
     floating.on('close', recover);
     floating.on('closed', recover);
-    floating.webContents.on('destroyed', () => {
+    floating.on('hide', () => {
+      if (disposed || retired) return;
+      if (!alive(floating)) { detached(); return; }
+      if (!main.isDestroyed() && !main.isVisible()) controller.recover();
+      else orbit.close();
+    });
+    floating.on('blur', () => {
+      if (!disposed && !retired && !closing.has(floating) && !alive(floating)) detached();
+    });
+    const contents = liveContents(floating);
+    if (!contents) { failed(); throw new Error('Companion unavailable'); }
+    secure(floating, contents);
+    contents.on('destroyed', () => {
       try { recover(); }
       finally {
         // Native destroy/close may still be on the C++ stack. If only contents
@@ -114,15 +138,10 @@ export function createCompanionHost(main: BrowserWindow) {
         queueMicrotask(() => destroy(floating));
       }
     });
-    floating.on('hide', () => {
-      if (disposed || retired) return;
-      if (!main.isDestroyed() && !main.isVisible()) controller.recover();
-      else orbit.close();
-    });
     floating.on('unresponsive', failed);
-    floating.webContents.on('render-process-gone', failed);
-    floating.webContents.on('preload-error', failed);
-    try { await loaded(floating, COMPANION_URL, ready => { if (core === floating) coreReady = ready; }); return floating; }
+    contents.on('render-process-gone', failed);
+    contents.on('preload-error', failed);
+    try { await loaded(floating, contents, COMPANION_URL, ready => { if (core === floating) coreReady = ready; }); return floating; }
     catch { failed(); throw new Error('Companion unavailable'); }
   }, areas, () => app.quit(), () => orbit.close(), matchedDisplay);
 
@@ -132,8 +151,10 @@ export function createCompanionHost(main: BrowserWindow) {
     const window = new BrowserWindow({ ...fixedOptions(SATELLITE_SIZE), title: role === 'open' ? 'Apri NEYDRA' : 'Esci da NEYDRA',
       parent, webPreferences: { ...rendererPreferences, session: orbitSession, preload: join(__dirname, '../preload/orbit.cjs') } });
     const entry = { role, window, parent, ready: undefined as (() => void) | undefined, timer: undefined as ReturnType<typeof setTimeout> | undefined };
-    const senderId = window.webContents.id;
-    satellites.set(senderId, entry); secure(window);
+    const contents = liveContents(window);
+    if (!contents) { destroy(window); throw new Error('Orbit unavailable'); }
+    const senderId = contents.id;
+    satellites.set(senderId, entry); secure(window, contents);
     const failed = () => {
       closing.add(window); clearTimeout(entry.timer);
       try { if (!disposed && core === parent && alive(parent)) orbit.close(); }
@@ -144,18 +165,18 @@ export function createCompanionHost(main: BrowserWindow) {
       closing.add(window); clearTimeout(entry.timer); satellites.delete(senderId);
       if (!disposed && core === parent && alive(parent)) orbit.close();
     });
-    window.webContents.on('destroyed', () => {
+    contents.on('destroyed', () => {
       closing.add(window); clearTimeout(entry.timer);
       try { if (!disposed && core === parent && alive(parent)) orbit.close(); }
       finally { queueMicrotask(() => destroy(window)); }
     });
-    window.on('focus', () => orbit.focused(role));
-    window.on('moved', () => orbit.validate());
-    window.on('resize', () => orbit.validate());
+    window.on('focus', () => { if (alive(window)) orbit.focused(role); });
+    window.on('moved', () => { if (alive(window)) orbit.validate(); });
+    window.on('resize', () => { if (alive(window)) orbit.validate(); });
     window.on('unresponsive', failed);
-    window.webContents.on('render-process-gone', failed);
-    window.webContents.on('preload-error', failed);
-    try { await loaded(window, ORBIT_URL, ready => { entry.ready = ready; }); }
+    contents.on('render-process-gone', failed);
+    contents.on('preload-error', failed);
+    try { await loaded(window, contents, ORBIT_URL, ready => { entry.ready = ready; }); }
     catch { failed(); throw new Error('Orbit unavailable'); }
     const port: Satellite = {
       isDestroyed: () => !alive(window),
@@ -177,16 +198,18 @@ export function createCompanionHost(main: BrowserWindow) {
 
   const reduce = () => controller.reduce(preferences.get().then(preference => preference.mode));
   ipcMain.handle(REDUCTION_CHANNEL, async (event, payload: unknown) => {
-    if (disposed || main.isDestroyed() || main.webContents.isDestroyed()) return { ok: false, code: 'unavailable' };
-    if (!trustedSender(event.sender.id, main.webContents.id, event.senderFrame?.url, event.senderFrame === main.webContents.mainFrame)) return { ok: false, code: 'untrusted-sender' };
+    const contents = liveContents(main);
+    if (!contents) return { ok: false, code: 'unavailable' };
+    if (!trustedSender(event.sender.id, contents.id, event.senderFrame?.url, event.senderFrame === contents.mainFrame)) return { ok: false, code: 'untrusted-sender' };
     const parsed = reductionCommandSchema.safeParse(payload);
     if (!parsed.success) return { ok: false, code: 'invalid-request' };
     return { ok: true, preference: parsed.data.type === 'get' ? await preferences.get() : await preferences.set(parsed.data.mode) };
   });
   ipcMain.handle(COMPANION_CHANNEL, (event, payload: unknown) => {
-    if (disposed || main.isDestroyed() || main.webContents.isDestroyed()) return { ok: false, code: 'unavailable' };
-    const source = trustedSender(event.sender.id, main.webContents.id, event.senderFrame?.url, event.senderFrame === main.webContents.mainFrame) ? 'main'
-      : core && alive(core) && trustedCompanion(event.sender.id, core.webContents.id, event.senderFrame?.url, event.senderFrame === core.webContents.mainFrame) ? 'companion' : undefined;
+    const contents = liveContents(main), companion = core && liveContents(core);
+    if (!contents) return { ok: false, code: 'unavailable' };
+    const source = trustedSender(event.sender.id, contents.id, event.senderFrame?.url, event.senderFrame === contents.mainFrame) ? 'main'
+      : companion && trustedCompanion(event.sender.id, companion.id, event.senderFrame?.url, event.senderFrame === companion.mainFrame) ? 'companion' : undefined;
     const parsed = companionCommandSchema.safeParse(payload);
     if (source === 'companion' && parsed.success && parsed.data.type === 'mode') return { ok: true, mode: coreMode };
     return companionCommand(payload, source, controller, keyboard => orbit.toggle(keyboard), () => coreReady?.(), () => orbit.close(true, true), direction => orbit.navigate(direction), reduce);
@@ -194,8 +217,9 @@ export function createCompanionHost(main: BrowserWindow) {
   ipcMain.handle(ORBIT_CHANNEL, (event, payload: unknown) => {
     if (disposed) return { ok: false, code: 'unavailable' };
     const entry = satellites.get(event.sender.id);
-    const role = entry && alive(entry.window) && trustedOrbit(event.sender.id, entry.window.webContents.id,
-      event.senderFrame?.url, event.senderFrame === entry.window.webContents.mainFrame) ? entry.role : undefined;
+    const contents = entry && liveContents(entry.window);
+    const role = contents && trustedOrbit(event.sender.id, contents.id,
+      event.senderFrame?.url, event.senderFrame === contents.mainFrame) ? entry!.role : undefined;
     try { return orbitCommand(payload, role, orbit, () => entry?.ready?.()); }
     catch { orbit.close(true); return { ok: false, code: 'unavailable' }; }
   });

@@ -1,5 +1,9 @@
 # NEYDRA — Due riduzioni fisse, verifica del candidato
 
+**Report storico di d5df904.** Le successive correzioni Windows e il notch
+superiore sono descritti nel [report aggiornato](ISLAND_WINDOWS_CORRECTION_REPORT.md).
+Le misure della capsula e gli esiti qui sotto si riferiscono a quel candidato.
+
 29 ottobre 2026. PR #10 DRAFT, branch feat/desktop-mini-interface, baseline
 `e492b39385d431d64a411f1dfb78d172590ef407` controllata prima delle modifiche;
 working tree inizialmente pulito. Nessun file personale rimosso o sovrascritto.
