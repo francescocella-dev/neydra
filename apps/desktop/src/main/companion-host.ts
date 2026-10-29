@@ -1,0 +1,259 @@
+import { REDUCTION_CHANNEL, reductionCommandSchema, type ReductionMode } from '../shared/reduction-contracts';
+import { reductionPreference } from './reduction-preference';
+import { anchoredPosition, companionSize } from './companion-placement';
+import { app, BrowserWindow, ipcMain, screen, type WebContents } from 'electron';
+import { join } from 'node:path';
+import { COMPANION_CHANNEL, COMPANION_MENU_EVENT, companionCommandSchema } from '../shared/companion-contracts';
+import { ORBIT_CHANNEL, ORBIT_EVENT, type OrbitRole } from '../shared/orbit-contracts';
+import { CompanionController, companionCommand } from './companion-controller';
+import { OrbitController, orbitCommand, SATELLITE_SIZE, type Satellite } from './orbit-controller';
+import { companionAsset, COMPANION_URL, orbitAsset, ORBIT_URL, trustedCompanion, trustedOrbit } from './companion-security';
+import { rendererSession } from './renderer-session';
+import { rendererPreferences, trustedSender } from './security';
+
+export function createCompanionHost(main: BrowserWindow) {
+  const companionSession = rendererSession('neydra-companion', join(__dirname, '../companion'), companionAsset);
+  const orbitSession = rendererSession('neydra-orbit', join(__dirname, '../orbit'), orbitAsset);
+  const preferences = reductionPreference(app.getPath('userData'));
+  let coreMode: ReductionMode = 'circle';
+  let core: BrowserWindow | undefined;
+  let disposed = false;
+  let coreReady: (() => void) | undefined;
+  let blurTimer: ReturnType<typeof setTimeout> | undefined;
+  const satellites = new Map<number, { role: OrbitRole; window: BrowserWindow; parent: BrowserWindow; ready?: () => void; timer?: ReturnType<typeof setTimeout> }>();
+  const matchedDisplay = () => screen.getDisplayMatching(main.isMinimized() ? main.getNormalBounds() : main.getBounds());
+  const areas = () => screen.getAllDisplays().map(display => display.workArea);
+  const closing = new WeakSet<BrowserWindow>(), destroying = new WeakSet<BrowserWindow>();
+  // Electron's native teardown can detach webContents before the BrowserWindow
+  // reports destroyed. Capture it once; an alive BrowserWindow is not sufficient.
+  const liveContents = (window: BrowserWindow): WebContents | undefined => {
+    if (disposed || closing.has(window) || window.isDestroyed()) return;
+    const contents = window.webContents;
+    return contents && !contents.isDestroyed() ? contents : undefined;
+  };
+  const alive = (window: BrowserWindow) => !!liveContents(window);
+  const usableCore = () => core && alive(core) && core.isVisible() ? core : undefined;
+  const send = (window: BrowserWindow, channel: string, payload: unknown): boolean => {
+    const contents = liveContents(window);
+    if (!contents) return false;
+    try { contents.send(channel, payload); return true; }
+    catch (error) {
+      // Only the known native destruction race is expected. Live-window bugs
+      // still propagate; never silence arbitrary send/teardown exceptions.
+      if (error instanceof TypeError && error.message === 'Object has been destroyed'
+        && (!alive(window) || contents.isDestroyed())) return false;
+      throw error;
+    }
+  };
+  const destroy = (window: BrowserWindow) => {
+    if (window.isDestroyed() || destroying.has(window)) return;
+    closing.add(window); destroying.add(window);
+    try { window.destroy(); }
+    finally { destroying.delete(window); }
+  };
+  const groupBlurred = () => {
+    clearTimeout(blurTimer);
+    if (disposed) return;
+    blurTimer = setTimeout(() => {
+      if (disposed) return;
+      const focused = BrowserWindow.getFocusedWindow();
+      if (focused !== usableCore() && ![...satellites.values()].some(entry => entry.window === focused && alive(entry.window) && entry.window.isVisible())) orbit.close(false, true);
+    }, 0);
+  };
+  const secure = (window: BrowserWindow, contents: WebContents) => {
+    window.removeMenu();
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    contents.on('will-navigate', event => event.preventDefault());
+    contents.on('will-frame-navigate', event => event.preventDefault());
+    contents.on('will-attach-webview', event => event.preventDefault());
+    window.on('close', () => closing.add(window));
+    window.on('blur', () => { if (alive(window)) groupBlurred(); });
+  };
+  const loaded = async (window: BrowserWindow, contents: WebContents, url: string, register: (ready?: () => void) => void) => {
+    if (!alive(window) || contents.isDestroyed()) throw new Error('UI closed');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let rejectReady: (reason: Error) => void = () => {};
+    const aborted = () => rejectReady(new Error('UI closed'));
+    const ready = new Promise<void>((resolve, reject) => { rejectReady = reject; register(resolve); timer = setTimeout(() => reject(new Error('UI not ready')), 5000); });
+    window.once('closed', aborted); contents.once('destroyed', aborted);
+    try { await Promise.all([window.loadURL(url), ready]); }
+    finally { clearTimeout(timer); window.removeListener('closed', aborted); contents.removeListener('destroyed', aborted); register(); }
+  };
+  const fixedOptions = (size: number | { width: number; height: number }) => {
+    const { width, height } = typeof size === 'number' ? { width: size, height: size } : size;
+    return { width, height, minWidth: width, maxWidth: width, minHeight: height, maxHeight: height,
+    show: false, frame: false, transparent: true, backgroundColor: '#00000000', alwaysOnTop: true, skipTaskbar: true,
+    resizable: false, minimizable: false, maximizable: false, fullscreenable: false, hasShadow: false }; };
+
+  const controller = new CompanionController(main, async mode => {
+    const size = companionSize(mode), display = matchedDisplay();
+    const position = anchoredPosition({ x: 0, y: 0, ...size }, display.workArea, mode);
+    if (!position) throw new Error('No companion work area');
+    const floating = new BrowserWindow({ ...fixedOptions(size), ...position, movable: false,
+      title: mode === 'circle' ? 'NEYDRA Mini' : 'NEYDRA Island',
+      webPreferences: { ...rendererPreferences, session: companionSession, preload: join(__dirname, '../preload/companion.cjs') } });
+    coreMode = mode;
+    core = floating;
+    let retired = false;
+    const recover = () => {
+      if (retired) return;
+      retired = true; closing.add(floating); clearTimeout(blurTimer);
+      const current = core === floating;
+      if (current) { core = undefined; coreReady = undefined; }
+      const children = [...satellites.values()].filter(entry => entry.parent === floating);
+      for (const entry of children) { closing.add(entry.window); clearTimeout(entry.timer); }
+      // Restore first, with the closing core detached. Child callbacks can
+      // reenter close, but cannot abort recovery or notify a dying parent.
+      try { if (!disposed && current) controller.recover(floating); }
+      finally {
+        try { orbit.close(); }
+        finally { for (const entry of children) destroy(entry.window); }
+      }
+    };
+    const failed = () => { try { recover(); } finally { destroy(floating); } };
+    const detached = () => {
+      // hide/blur can be dispatched inside a native close/destroy operation.
+      // Restore now, but finish a dead native shell after that stack unwinds.
+      try { recover(); } finally { queueMicrotask(() => destroy(floating)); }
+    };
+    floating.on('close', recover);
+    floating.on('closed', recover);
+    floating.on('hide', () => {
+      if (disposed || retired) return;
+      if (!alive(floating)) { detached(); return; }
+      if (!main.isDestroyed() && !main.isVisible()) controller.recover();
+      else orbit.close();
+    });
+    floating.on('blur', () => {
+      if (!disposed && !retired && !closing.has(floating) && !alive(floating)) detached();
+    });
+    const contents = liveContents(floating);
+    if (!contents) { failed(); throw new Error('Companion unavailable'); }
+    secure(floating, contents);
+    contents.on('destroyed', () => {
+      try { recover(); }
+      finally {
+        // Native destroy/close may still be on the C++ stack. If only contents
+        // died, finish the dead shell on the next microtask, not reentrantly.
+        queueMicrotask(() => destroy(floating));
+      }
+    });
+    floating.on('unresponsive', failed);
+    contents.on('render-process-gone', failed);
+    contents.on('preload-error', failed);
+    try { await loaded(floating, contents, COMPANION_URL, ready => { if (core === floating) coreReady = ready; }); return floating; }
+    catch { failed(); throw new Error('Companion unavailable'); }
+  }, areas, () => app.quit(), () => orbit.close(), matchedDisplay);
+
+  const orbit = new OrbitController(() => usableCore()?.getBounds(), areas, async role => {
+    const parent = usableCore();
+    if (!parent) throw new Error('Core unavailable');
+    const window = new BrowserWindow({ ...fixedOptions(SATELLITE_SIZE), title: role === 'open' ? 'Apri NEYDRA' : 'Esci da NEYDRA',
+      parent, webPreferences: { ...rendererPreferences, session: orbitSession, preload: join(__dirname, '../preload/orbit.cjs') } });
+    const entry = { role, window, parent, ready: undefined as (() => void) | undefined, timer: undefined as ReturnType<typeof setTimeout> | undefined };
+    const contents = liveContents(window);
+    if (!contents) { destroy(window); throw new Error('Orbit unavailable'); }
+    const senderId = contents.id;
+    satellites.set(senderId, entry); secure(window, contents);
+    const failed = () => {
+      closing.add(window); clearTimeout(entry.timer);
+      try { if (!disposed && core === parent && alive(parent)) orbit.close(); }
+      finally { destroy(window); }
+    };
+    window.on('close', () => { closing.add(window); clearTimeout(entry.timer); if (core === parent && alive(parent)) orbit.close(); });
+    window.on('closed', () => {
+      closing.add(window); clearTimeout(entry.timer); satellites.delete(senderId);
+      if (!disposed && core === parent && alive(parent)) orbit.close();
+    });
+    contents.on('destroyed', () => {
+      closing.add(window); clearTimeout(entry.timer);
+      try { if (!disposed && core === parent && alive(parent)) orbit.close(); }
+      finally { queueMicrotask(() => destroy(window)); }
+    });
+    window.on('focus', () => { if (alive(window)) orbit.focused(role); });
+    window.on('moved', () => { if (alive(window)) orbit.validate(); });
+    window.on('resize', () => { if (alive(window)) orbit.validate(); });
+    window.on('unresponsive', failed);
+    contents.on('render-process-gone', failed);
+    contents.on('preload-error', failed);
+    try { await loaded(window, contents, ORBIT_URL, ready => { entry.ready = ready; }); }
+    catch { failed(); throw new Error('Orbit unavailable'); }
+    const port: Satellite = {
+      isDestroyed: () => !alive(window),
+      getBounds: () => window.getBounds(),
+      setPosition: (x, y) => window.setPosition(x, y), focus: () => { if (alive(window)) window.focus(); }, destroy: () => destroy(window),
+      reveal() { clearTimeout(entry.timer); if (!alive(window)) return; window.setIgnoreMouseEvents(false); window.showInactive(); send(window, ORBIT_EVENT, 'reveal'); },
+      conceal(animate) {
+        clearTimeout(entry.timer);
+        if (!alive(window)) return;
+        window.setIgnoreMouseEvents(true); // Fading controls cannot intercept or execute clicks.
+        if (!send(window, ORBIT_EVENT, 'conceal')) return;
+        if (animate && window.isVisible()) entry.timer = setTimeout(() => { if (alive(window)) window.hide(); }, 150);
+        else if (window.isVisible()) window.hide();
+      },
+    };
+    return port;
+  }, open => { if (core) send(core, COMPANION_MENU_EVENT, { open }); },
+  () => usableCore()?.focus(), () => { controller.restore(); }, () => app.quit());
+
+  const reduce = () => controller.reduce(preferences.get().then(preference => preference.mode));
+  ipcMain.handle(REDUCTION_CHANNEL, async (event, payload: unknown) => {
+    const contents = liveContents(main);
+    if (!contents) return { ok: false, code: 'unavailable' };
+    if (!trustedSender(event.sender.id, contents.id, event.senderFrame?.url, event.senderFrame === contents.mainFrame)) return { ok: false, code: 'untrusted-sender' };
+    const parsed = reductionCommandSchema.safeParse(payload);
+    if (!parsed.success) return { ok: false, code: 'invalid-request' };
+    return { ok: true, preference: parsed.data.type === 'get' ? await preferences.get() : await preferences.set(parsed.data.mode) };
+  });
+  ipcMain.handle(COMPANION_CHANNEL, (event, payload: unknown) => {
+    const contents = liveContents(main), companion = core && liveContents(core);
+    if (!contents) return { ok: false, code: 'unavailable' };
+    const source = trustedSender(event.sender.id, contents.id, event.senderFrame?.url, event.senderFrame === contents.mainFrame) ? 'main'
+      : companion && trustedCompanion(event.sender.id, companion.id, event.senderFrame?.url, event.senderFrame === companion.mainFrame) ? 'companion' : undefined;
+    const parsed = companionCommandSchema.safeParse(payload);
+    if (source === 'companion' && parsed.success && parsed.data.type === 'mode') return { ok: true, mode: coreMode };
+    return companionCommand(payload, source, controller, keyboard => orbit.toggle(keyboard), () => coreReady?.(), () => orbit.close(true, true), direction => orbit.navigate(direction), reduce);
+  });
+  ipcMain.handle(ORBIT_CHANNEL, (event, payload: unknown) => {
+    if (disposed) return { ok: false, code: 'unavailable' };
+    const entry = satellites.get(event.sender.id);
+    const contents = entry && liveContents(entry.window);
+    const role = contents && trustedOrbit(event.sender.id, contents.id,
+      event.senderFrame?.url, event.senderFrame === contents.mainFrame) ? entry!.role : undefined;
+    try { return orbitCommand(payload, role, orbit, () => entry?.ready?.()); }
+    catch { orbit.close(true); return { ok: false, code: 'unavailable' }; }
+  });
+  const minimize = () => {
+    if (!disposed) void reduce().then(result => {
+      // A restore may cancel a pending creation, followed by another native
+      // minimize. Recover that minimized main when the cancelled creation ends.
+      if (!result.ok && result.code !== 'busy' && !disposed && !main.isDestroyed() && main.isMinimized()) controller.restore();
+    });
+  };
+  const restored = () => controller.nativeRestore();
+  main.on('minimize', minimize); main.on('restore', restored);
+  return {
+    restore: () => controller.restore(),
+    displaysChanged: () => controller.displaysChanged(),
+    dispose() {
+      if (disposed) return;
+      disposed = true; clearTimeout(blurTimer);
+      const floating = core, children = [...satellites.values()];
+      core = undefined; coreReady = undefined; satellites.clear();
+      if (floating) closing.add(floating);
+      for (const entry of children) { closing.add(entry.window); clearTimeout(entry.timer); }
+      try { try { orbit.dispose(); } finally { controller.dispose(); } }
+      finally {
+        try { if (floating) destroy(floating); }
+        finally {
+          try { for (const entry of children) destroy(entry.window); }
+          finally {
+            main.removeListener('minimize', minimize); main.removeListener('restore', restored);
+            ipcMain.removeHandler(COMPANION_CHANNEL); ipcMain.removeHandler(ORBIT_CHANNEL); ipcMain.removeHandler(REDUCTION_CHANNEL);
+            companionSession.protocol.unhandle('app'); orbitSession.protocol.unhandle('app');
+          }
+        }
+      }
+    },
+  };
+}

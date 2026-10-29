@@ -8,5 +8,13 @@ await Promise.all([
     bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'] }),
   bundle({ entryPoints: ['src/preload/index.ts'], outfile: 'dist/preload/index.cjs',
     bundle: true, platform: 'browser', format: 'cjs', target: 'es2022', external: ['electron'] }),
+  bundle({ entryPoints: ['src/preload/companion.ts'], outfile: 'dist/preload/companion.cjs',
+    bundle: true, platform: 'browser', format: 'cjs', target: 'es2022', external: ['electron'] }),
+  bundle({ entryPoints: ['src/preload/orbit.ts'], outfile: 'dist/preload/orbit.cjs',
+    bundle: true, platform: 'browser', format: 'cjs', target: 'es2022', external: ['electron'] }),
+  viteBuild({ configFile: false, root: 'src/orbit', base: './',
+    build: { outDir: '../../dist/orbit', emptyOutDir: true, sourcemap: false } }),
+  viteBuild({ configFile: false, root: 'src/companion', base: './',
+    build: { outDir: '../../dist/companion', emptyOutDir: true, sourcemap: false } }),
   viteBuild(),
 ]);

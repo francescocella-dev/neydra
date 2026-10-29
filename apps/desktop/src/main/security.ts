@@ -10,7 +10,7 @@ export function rendererAsset(url: string): string | undefined {
   const parsed = new URL(url);
   if (parsed.protocol !== 'app:' || parsed.host !== 'desktop' || parsed.username || parsed.password || parsed.search || parsed.hash) return;
   if (parsed.pathname === '/index.html') return 'index.html';
-  if (/^\/assets\/[A-Za-z0-9_-]+\.(js|css)$/.test(parsed.pathname)) return parsed.pathname.slice(1);
+  if (/^\/assets\/[A-Za-z0-9_-]+\.(js|css|woff2)$/.test(parsed.pathname)) return parsed.pathname.slice(1);
 }
 
 export function trustedSender(senderId: number, expectedId: number, frameUrl?: string, isMainFrame = false) {

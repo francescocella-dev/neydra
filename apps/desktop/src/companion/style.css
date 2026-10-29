@@ -1,0 +1,46 @@
+@font-face { font-family: Oxanium; src: url('../renderer/fonts/oxanium-latin-variable.woff2') format('woff2'); font-style: normal; font-weight: 200 800; font-display: swap; }
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; background: transparent; }
+body { position: relative; user-select: none; }
+/* Fixed DIP geometry and no native pressed-button appearance. Neither resizing
+   a viewport nor :active/hover/menu state can scale the visible core. */
+#companion { appearance: none; position: absolute; left: 4px; top: 4px; display: grid; place-items: center; width: 112px; height: 112px; min-width: 112px; min-height: 112px; max-width: 112px; max-height: 112px; transform: none; margin: 0; padding: 0; border: 1px solid #d88b4f; border-radius: 50%; background: radial-gradient(circle at 35% 28%, #282729, #101114 72%); color: #ffb67b; font: 500 44px/1 Oxanium, sans-serif; cursor: pointer; user-select: none; box-shadow: inset 0 0 16px #ef954a12; }
+.island-brand, .island-open { display: none; }
+/* A fixed top-edge notch: the native window stays 240×64 requested DIP.
+   Fill its actual viewport width, including OS-rounded DIP, without resizing it.
+   Only the lower corners curve; no floating gap, wake strip or expanded panel. */
+body[data-mode="island"] #companion {
+  left: 0; top: 0; width: 100%; min-width: 0; max-width: none;
+  height: 60px; min-height: 60px; max-height: 60px;
+  border-radius: 0 0 20px 20px; border-top: 0;
+  border-color: #514136; background: #0d0e10;
+  grid-template-columns: 28px 1fr 20px; gap: 14px; padding: 0 20px 4px;
+  box-shadow: inset 0 -1px 0 #e58c4630, inset 0 -14px 24px #ee873807;
+  transition: background-color 170ms ease, border-color 170ms ease, box-shadow 170ms ease;
+}
+body[data-mode="island"] #companion::after {
+  content: ''; position: absolute; bottom: 5px; left: calc(50% - 20px);
+  width: 40px; height: 2px; border-radius: 2px; background: #ffae70;
+  opacity: .38; pointer-events: none; transition: opacity 170ms ease;
+}
+body[data-mode="island"] .companion-mark {
+  display: grid; place-items: center; width: 28px; height: 28px;
+  border: 1px solid #a7724c; border-radius: 8px;
+  font-size: 17px; color: #ffc18b; background: #251d18;
+}
+body[data-mode="island"] .island-brand { display: inline; font-size: 14px; letter-spacing: .16em; color: #f0eae4; }
+body[data-mode="island"] .island-open { display: inline; font: 18px/1 sans-serif; color: #d6a582; transition: color 170ms ease, transform 170ms ease; }
+body[data-mode="island"] #companion:is(:hover, :focus-visible, [aria-expanded="true"]) {
+  background: #171619; border-color: #c58a5d;
+  box-shadow: inset 0 -1px 0 #ffb67b60, inset 0 -14px 24px #ee873812;
+}
+body[data-mode="island"] #companion:is(:hover, :focus-visible, [aria-expanded="true"])::after { opacity: 1; }
+body[data-mode="island"] #companion:active { background: #231c17; }
+body[data-mode="island"] #companion:active .island-open { color: #ffca9f; transform: translateY(1px); }
+@media (prefers-reduced-motion: reduce) {
+  body[data-mode="island"] #companion, body[data-mode="island"] #companion::after,
+  body[data-mode="island"] .island-open { transition: none; }
+  body[data-mode="island"] #companion:active .island-open { transform: none; }
+}
+#companion:focus-visible { outline: 2px solid #ffbd87; outline-offset: -5px; }
+#companion-help { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
