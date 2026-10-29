@@ -2,6 +2,8 @@
 
 This is the preserved v1 baseline. For the subsequent renderer-only visual review, updated captures, test counts and measurements, see [VISUAL_REVIEW_V2.md](VISUAL_REVIEW_V2.md).
 
+Latest focused renderer pass: [VISUAL_REVIEW_V3.md](VISUAL_REVIEW_V3.md), with V2 retained as a selectable reference/fallback.
+
 **Result:** real approved Blender input → compact morph GLB → real Three.js rendering **PASS for the measured technical checks**. Holographic cosmetic acceptance **PENDING OWNER REVIEW**. No merge, release, billed service or desktop integration.
 
 ## Preserved baseline and boundaries

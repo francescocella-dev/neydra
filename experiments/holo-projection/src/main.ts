@@ -6,6 +6,7 @@ import { Projection } from './projection';
 import { holoMaterial } from './material';
 import { projectionBeam } from './beam';
 import { holoSpeech } from './speech-profile';
+import { digitalAura } from './aura';
 import { applyFace, setMorph } from './rig';
 import { AvatarEngine } from './engine/AvatarEngine';
 import { DEMO_CAPTION, DEMO_CUES, DEMO_DURATION } from './engine/demo';
@@ -42,7 +43,10 @@ async function start() {
   const box = new THREE.Box3().setFromBufferAttribute(head.geometry.attributes.position as THREE.BufferAttribute);
   box.applyMatrix4(head.matrixWorld);
   const height = box.max.y - box.min.y;
+  let version: 'v2'|'v3'=new URLSearchParams(location.search).get('version')==='v2'?'v2':'v3';
+  element<HTMLSelectElement>('version').value=version;
   const shader = holoMaterial(box.min.y, box.max.y);
+  shader.uniforms.uV3.value=Number(version==='v3');
   const sourceMaterials = new Set<THREE.Material>();
   for (const mesh of meshes) {
     for (const mat of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) sourceMaterials.add(mat);
@@ -130,6 +134,16 @@ async function start() {
   const beamEffect = projectionBeam(height,originY);
   const beam = beamEffect.group;
   scene.add(beam);
+  beamEffect.uniforms.uV3.value=Number(version==='v3');
+  const aura=digitalAura(head,box.min.y,box.max.y,new THREE.Vector3(0,originY,0));
+  let vfxEpoch=performance.now();
+  let fixedVfxTime:number|null=null;
+  let effectsEnabled=true;
+  let inspectionYaw=0;
+  element<HTMLSelectElement>('version').onchange=()=>{
+    version=element<HTMLSelectElement>('version').value==='v2'?'v2':'v3';
+    shader.uniforms.uV3.value=beamEffect.uniforms.uV3.value=Number(version==='v3');
+  };
 
   const projection = new Projection();
   projection.seek(1);
@@ -186,6 +200,7 @@ async function start() {
     projection.seek(0);
     transition(true);
     demoStart = performance.now();
+    vfxEpoch=demoStart;
     autoSpeech = false;
     ending = false;
     inspection = false;
@@ -234,6 +249,7 @@ async function start() {
   let frameMs = 0;
   let lastFrame = performance.now();
   const frameDurations: number[] = [];
+  const backdropDirection=new THREE.Vector3();
   const render = () => {
     now = performance.now();
     elapsedDemo = demoStart === null ? 0 : now - demoStart;
@@ -245,7 +261,7 @@ async function start() {
       stateInput.value = 'idle';
     }
     const frame = engine.sample(now);
-    if (inspection) { applyPose(); pivot.rotation.set(0, 0, 0); }
+    if (inspection) { applyPose(); pivot.rotation.set(0, inspectionYaw, 0); }
     else {
       applyFace(head, holoSpeech(frame.face));
       // Legacy engine drift is limited to the current Holo design envelopes.
@@ -259,12 +275,17 @@ async function start() {
     beam.visible = !projection.reducedMotion && !neutral && p > 0;
     beamEffect.uniforms.uStrength.value = Math.min(1,p/0.3);
     beam.scale.y = Math.max(0.001,Math.min(1,(p-0.10)/0.28));
+    aura.update(p,fixedVfxTime??(now-vfxEpoch)/1000,projection.reducedMotion,
+      engine.getSnapshot().state==='speaking',version==='v3'&&!neutral&&effectsEnabled);
     if (document.activeElement !== progressInput) progressInput.value = String(p);
     element('percent').textContent = `${Math.round(p * 100)}%`;
     const accent = tokens.palette[tokens.stateAccent[engine.getSnapshot().state] as keyof typeof tokens.palette];
     apertureMaterial.color.set(accent);
     status.textContent = `${engine.getSnapshot().state} · ${rigReport(gltf)}`;
     controls.update();
+    camera.getWorldDirection(backdropDirection);
+    backdrop.position.copy(camera.position).addScaledVector(backdropDirection,height*3.8);
+    backdrop.quaternion.copy(camera.quaternion);
     renderer.render(scene, camera);
     frameMs += now - lastFrame;
     frameDurations.push(now-lastFrame);
@@ -278,15 +299,24 @@ async function start() {
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height);
+    aura.resize(width,renderer.getPixelRatio());
   };
   new ResizeObserver(resize).observe(stage);
   resize();
   renderer.setAnimationLoop(render);
+  window.addEventListener('pagehide',()=>{renderer.setAnimationLoop(null);aura.dispose();},{once:true});
   // Local deterministic inspection surface for genuine loaded-geometry tests.
   window.holoLab = {
     pose(name: string) { cancel(); inspection = true; poseInput.value = name; render(); },
     progress(value: number) { cancel(); projection.seek(value); manualProgress = projection.sample(performance.now()); render(); },
-    pixels() {
+    vfxTime(seconds:number|null){
+      if(seconds!==null&&!Number.isFinite(seconds))throw new Error('Invalid VFX time');
+      fixedVfxTime=seconds;render();
+    },
+    vfx(){return {...aura.snapshot(),version};},
+    effects(enabled:boolean){effectsEnabled=enabled;render();},
+    headYaw(yaw:number){inspectionYaw=THREE.MathUtils.clamp(yaw,-0.4,0.4);render();},
+    pixels(region:'face'|'edge'='face') {
       render();
       const context=renderer.getContext();
       const width=renderer.domElement.width,height=renderer.domElement.height;
@@ -295,7 +325,9 @@ async function start() {
       const values: number[]=[];
       // Fixed central facial rectangle, independent of background/controls.
       for(let y=0;y<24;y++) for(let x=0;x<24;x++) {
-        const i=(Math.floor(height*(0.38+y*0.012))*width+Math.floor(width*(0.43+x*0.006)))*4;
+        const py=region==='edge'?0.20+y*0.026:0.38+y*0.012;
+        const px=region==='edge'?0.31+x*0.016:0.43+x*0.006;
+        const i=(Math.floor(height*py)*width+Math.floor(width*px))*4;
         values.push(buffer[i],buffer[i+1],buffer[i+2]);
       }
       return values;
@@ -334,7 +366,11 @@ async function start() {
 declare global { interface Window { holoLab: {
   ready: boolean; pose(name: string): void; progress(value: number): void; view(name: string): void;
   vertex(index: number): number[];
-  pixels(): number[];
+  pixels(region?:'face'|'edge'): number[];
+  effects(enabled:boolean):void;
+  vfxTime(seconds:number|null):void;
+  vfx(): ReturnType<ReturnType<typeof digitalAura>['snapshot']> & {version:'v2'|'v3'};
+  headYaw(yaw:number):void;
   performance(reset?: boolean): {frames:number;medianMs:number;p95Ms:number};
   morphGeometry(name: string): { changed: number; maximum: number; extremeIndex: number; meanX: number };
   snapshot(): { progress: number; state: string; weights: Record<string, number>; renderer: THREE.WebGLInfo['render']; webgl: string;

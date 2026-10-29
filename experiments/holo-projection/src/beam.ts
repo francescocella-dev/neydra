@@ -4,18 +4,19 @@ import tokens from '../spec/holo.tokens.json';
 /** Intersecting soft light sheets, analytical radial/longitudinal falloff. */
 export function projectionBeam(height: number, originY: number) {
   const group = new Group();
-  const uniforms = { uStrength: { value: 0 }, uColor: { value: new Color(tokens.palette.primary) } };
+  const uniforms = { uStrength: { value: 0 }, uColor: { value: new Color(tokens.palette.primary) },uV3:{value:1} };
   const material = new ShaderMaterial({
     uniforms, transparent: true, depthWrite: false, side: DoubleSide, blending: AdditiveBlending,
     vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-    fragmentShader: `varying vec2 vUv; uniform float uStrength; uniform vec3 uColor;
+    fragmentShader: `varying vec2 vUv; uniform float uStrength,uV3; uniform vec3 uColor;
       void main(){
-        float radius = mix(0.018,0.32,pow(vUv.y,0.8));
+        float radius = mix(mix(0.018,0.32,pow(vUv.y,0.8)),mix(0.032,0.48,pow(vUv.y,0.7)),uV3);
         float distanceToAxis = abs(vUv.x-0.5)/radius;
-        float radial = exp(-distanceToAxis*distanceToAxis*3.5);
+        float radial = exp(-distanceToAxis*distanceToAxis*mix(3.5,1.65,uV3));
         float endFade = smoothstep(0.0,0.08,vUv.y)*(1.0-smoothstep(0.35,1.0,vUv.y));
         float filaments = 0.76+0.24*cos((vUv.x-0.5)*160.0+vUv.y*12.0);
-        gl_FragColor=vec4(uColor,radial*endFade*filaments*uStrength*0.032);
+        filaments=mix(filaments,0.94+0.06*cos((vUv.x-0.5)*28.0+vUv.y*5.0),uV3);
+        gl_FragColor=vec4(uColor,radial*endFade*filaments*uStrength*mix(0.032,0.024,uV3));
       }`,
   });
   const beamHeight = height*0.78;

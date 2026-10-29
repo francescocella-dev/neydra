@@ -7,10 +7,10 @@ test('actual approved GLB, independent morphs, projection and cancellation', asy
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   page.on('request', request => requests.push(request.url()));
-  await page.goto('/');
+  await page.goto('/?version=v2');
   await expect(page.locator('#status')).not.toContainText('BLOCKED');
   await page.waitForFunction(() => window.holoLab?.ready);
-  await mkdir('evidence', { recursive: true });
+  await mkdir('local/v2-regression', { recursive: true });
   const geometry: Record<string, unknown> = {};
   for (const [name, pose] of [['eyeBlinkLeft', 'blinkLeft'], ['eyeBlinkRight', 'blinkRight'], ['jawOpen', 'open'], ['mouthClose', 'close'], ['mouthPucker', 'pucker'], ['mouthFunnel', 'funnel']]) {
     const result = await page.evaluate(({ name, pose }) => {
@@ -42,12 +42,12 @@ test('actual approved GLB, independent morphs, projection and cancellation', asy
   const rms=(a:number[],b:number[])=>Math.sqrt(a.reduce((sum,v,i)=>sum+(v-b[i])**2,0)/a.length);
   await page.evaluate(()=>window.holoLab.pose('neutral'));
   const irisOn=await pixelsAt(1);
-  await page.screenshot({path:'evidence/v2-iris-on.png'});
+  await page.screenshot({path:'local/v2-regression/v2-iris-on.png'});
   await page.locator('#iris').uncheck();
   const irisOff=await pixelsAt(1);
   const irisDifference=rms(irisOn,irisOff);
   expect(irisDifference).toBeGreaterThan(0.02);
-  await page.screenshot({path:'evidence/v2-iris-off.png'});
+  await page.screenshot({path:'local/v2-regression/v2-iris-off.png'});
   await page.locator('#iris').check();
   await page.evaluate(()=>window.holoLab.pose('blink'));
   const irisClosed=await page.evaluate(()=>window.holoLab.pixels());
@@ -59,9 +59,9 @@ test('actual approved GLB, independent morphs, projection and cancellation', asy
   await page.locator('#markers').check();
   const backgroundMarkers=await pixelsAt(0);
   const headMarkers=await pixelsAt(1);
-  await page.screenshot({path:'evidence/v2-translucency-dark.png'});
+  await page.screenshot({path:'local/v2-regression/v2-translucency-dark.png'});
   await page.locator('#light').check();
-  await page.screenshot({path:'evidence/v2-translucency-light.png'});
+  await page.screenshot({path:'local/v2-regression/v2-translucency-light.png'});
   await page.locator('#light').uncheck();
   await page.locator('#markers').uncheck();
   const headWithoutMarkers=await pixelsAt(1);
@@ -72,7 +72,7 @@ test('actual approved GLB, independent morphs, projection and cancellation', asy
   const opaque=await pixelsAt(1);
   await page.locator('#markers').check();
   const opaqueMarkers=await pixelsAt(1);
-  await page.screenshot({path:'evidence/v2-translucency-neutral.png'});
+  await page.screenshot({path:'local/v2-regression/v2-translucency-neutral.png'});
   expect(rms(opaqueMarkers,opaque)/rms(backgroundMarkers,background)).toBeLessThan(0.1);
   await page.locator('#markers').uncheck();
   await page.locator('#neutral').uncheck();
@@ -105,27 +105,27 @@ test('actual approved GLB, independent morphs, projection and cancellation', asy
     ['front', 'smile', 'smile'], ['front', 'gaze', 'gaze'],
   ]) {
     await page.evaluate(({ view, pose }) => { window.holoLab.view(view); window.holoLab.pose(pose); }, { view, pose });
-    await page.screenshot({ path: `evidence/v2-${name}.png` });
+    await page.screenshot({ path: `local/v2-regression/v2-${name}.png` });
   }
   await page.evaluate(() => window.holoLab.pose('neutral'));
   await page.locator('#neutral').check();
-  await page.screenshot({ path: 'evidence/v2-neutral-material.png' });
+  await page.screenshot({ path: 'local/v2-regression/v2-neutral-material.png' });
   await page.locator('#neutral').uncheck();
   await page.locator('#light').check();
-  await page.screenshot({ path: 'evidence/v2-light-background.png' });
+  await page.screenshot({ path: 'local/v2-regression/v2-light-background.png' });
   await page.locator('#light').uncheck();
   for (const value of [0, 0.25, 0.5, 0.75, 1]) {
     await page.evaluate(value => window.holoLab.progress(value), value);
-    await page.screenshot({ path: `evidence/v2-progress-${value * 100}.png` });
+    await page.screenshot({ path: `local/v2-regression/v2-progress-${value * 100}.png` });
   }
   await page.evaluate(()=>window.holoLab.progress(0.5));
-  await page.screenshot({path:'evidence/v2-exit-50.png'});
+  await page.screenshot({path:'local/v2-regression/v2-exit-50.png'});
   await page.evaluate(()=>window.holoLab.progress(1));
   await page.locator('#demo').click();
   await expect.poll(() => page.evaluate(() => window.holoLab.snapshot().progress)).toBeGreaterThan(0.9);
   await expect.poll(() => page.evaluate(() => window.holoLab.snapshot().state)).toBe('speaking');
   await page.waitForTimeout(800);
-  await page.screenshot({ path: 'evidence/v2-speaking-simulated.png' });
+  await page.screenshot({ path: 'local/v2-regression/v2-speaking-simulated.png' });
   const speechWeights=await page.evaluate(()=>window.holoLab.snapshot().weights);
   expect(speechWeights.viseme_O).toBeLessThanOrEqual(0.42);
   expect(speechWeights.viseme_U).toBeLessThanOrEqual(0.38);
@@ -144,16 +144,16 @@ test('actual approved GLB, independent morphs, projection and cancellation', asy
   expect(await page.evaluate(() => window.holoLab.snapshot().beamVisible)).toBe(false);
   await page.locator('#appear').click();
   await expect.poll(() => page.evaluate(() => window.holoLab.snapshot().progress)).toBe(1);
-  await page.screenshot({ path: 'evidence/v2-reduced-motion.png' });
+  await page.screenshot({ path: 'local/v2-regression/v2-reduced-motion.png' });
   for (const state of ['idle', 'listening', 'processing', 'speaking', 'interrupted', 'error']) {
     await page.selectOption('#state', state);
     expect(await page.evaluate(() => window.holoLab.snapshot().state)).toBe(state);
   }
   await page.setViewportSize({ width: 720, height: 480 });
-  await page.screenshot({ path: 'evidence/v2-narrow.png' });
+  await page.screenshot({ path: 'local/v2-regression/v2-narrow.png' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight)).toBe(true);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: 'evidence/v2-mobile.png' });
+  await page.screenshot({ path: 'local/v2-regression/v2-mobile.png' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.locator('#reduced').uncheck();
@@ -179,13 +179,13 @@ test('actual approved GLB, independent morphs, projection and cancellation', asy
     const recording = (window as unknown as { recording: { recorder: MediaRecorder; done: Promise<string> } }).recording;
     recording.recorder.stop(); return await recording.done;
   });
-  await writeFile('evidence/demonstration-v2.webm', Buffer.from(video, 'base64'));
+  await writeFile('local/v2-regression/demonstration-v2.webm', Buffer.from(video, 'base64'));
   expect(await page.evaluate(() => window.holoLab.snapshot().progress)).toBe(0);
   expect(errors).toEqual([]);
   expect(requests.every(url => url.startsWith('http://127.0.0.1:4173/') || url.startsWith('data:') || url.startsWith('blob:'))).toBe(true);
   const runtime = await page.evaluate(() => window.holoLab.snapshot());
   const performanceSample=await page.evaluate(()=>window.holoLab.performance());
-  await writeFile('evidence/browser-review-v2.json', JSON.stringify({ status: 'PASS', runtime, geometry, errors,
+  await writeFile('local/v2-regression/browser-review-v2.json', JSON.stringify({ status: 'PASS', runtime, geometry, errors,
     transmission,partialRows,continuity,performanceSample,speechWeights,irisDifference,
     environment: 'Windows, headless Edge WebGL; not a foreground GPU performance gate',
     speech: 'Simulated visemes only, no audio, no microphone or TTS' }, null, 2) + '\n');
